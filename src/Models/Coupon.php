@@ -11,7 +11,10 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Collection;
+use RoundlyConsulting\Coupons\Actions\RedeemCouponAction;
 use RoundlyConsulting\Coupons\Database\Factories\CouponFactory;
+use RoundlyConsulting\Coupons\DataTransferObjects\RedeemCouponData;
+use RoundlyConsulting\Coupons\DataTransferObjects\RedemptionResult;
 use RoundlyConsulting\Coupons\Enums\DiscountType;
 use RoundlyConsulting\Coupons\Exceptions\InvalidMoney;
 use RoundlyConsulting\Coupons\ValueObjects\Money;
@@ -181,6 +184,18 @@ final class Coupon extends Model
     {
         return $this->minimum_spend === null
             || $price->getAmount() >= $this->minimum_spend;
+    }
+
+    /**
+     * Redeem this coupon for the given redeemer and price: validates, increments
+     * usage atomically, records a redemption row when tracking is on, and fires
+     * CouponRedeemed.
+     */
+    public function redeemBy(?Model $redeemer, Money $price): RedemptionResult
+    {
+        return app(RedeemCouponAction::class)->execute(
+            new RedeemCouponData(coupon: $this, price: $price, redeemer: $redeemer),
+        );
     }
 
     /**
