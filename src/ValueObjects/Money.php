@@ -7,7 +7,6 @@ namespace RoundlyConsulting\Coupons\ValueObjects;
 use NumberFormatter;
 use RoundlyConsulting\Coupons\Exceptions\InvalidMoney;
 use Stringable;
-use ValueError;
 
 /**
  * Immutable money value object: an integer amount in the currency's minor unit
@@ -116,19 +115,15 @@ final readonly class Money implements Stringable
      */
     public function format(?string $locale = null): string
     {
-        try {
-            $formatter = new NumberFormatter(
-                $locale ?? 'en_US',
-                NumberFormatter::CURRENCY,
-            );
+        $formatter = new NumberFormatter(
+            $locale ?? 'en_US',
+            NumberFormatter::CURRENCY,
+        );
 
-            $formatted = $formatter->formatCurrency(
-                $this->amount / 100,
-                $this->currency,
-            );
-        } catch (ValueError) {
-            $formatted = false;
-        }
+        $formatted = $formatter->formatCurrency(
+            $this->amount / 100,
+            $this->currency,
+        );
 
         if ($formatted === false) {
             return sprintf('%s %0.2f', $this->currency, $this->amount / 100);

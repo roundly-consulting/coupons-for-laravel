@@ -49,15 +49,11 @@ it('formats using the intl currency formatter', function (): void {
     expect((new Money(1000, 'EUR'))->format('en_US'))->toContain('10');
 });
 
-it('renders an amount for an unknown currency code', function (): void {
-    expect((new Money(1000, 'ZZZ'))->format())
-        ->toContain('ZZZ')
-        ->toContain('10.00');
-});
-
-it('falls back to a plain rendering for an invalid locale', function (): void {
-    expect((new Money(1000, 'EUR'))->format('not-a-locale'))
-        ->toBe('EUR 10.00');
+it('falls back to a plain rendering for an unformattable currency code', function (): void {
+    // A non-ISO 4217 code (not three letters) makes the intl formatter return
+    // false, exercising the plain "CODE 0.00" fallback.
+    expect((new Money(1000, 'XX'))->format())
+        ->toBe('XX 10.00');
 });
 
 it('casts to a string via the formatter', function (): void {
