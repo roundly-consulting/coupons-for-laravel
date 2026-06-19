@@ -55,6 +55,11 @@ it('renders an amount for an unknown currency code', function (): void {
         ->toContain('10.00');
 });
 
+it('falls back to a plain rendering for an invalid locale', function (): void {
+    expect((new Money(1000, 'EUR'))->format('not-a-locale'))
+        ->toBe('EUR 10.00');
+});
+
 it('casts to a string via the formatter', function (): void {
     expect((string) new Money(1000, 'USD'))->toContain('10');
 });

@@ -170,6 +170,13 @@ it('allows a guest redemption with no redeemer and skips the per-user cap', func
         ->and(CouponRedemption::query()->count())->toBe(0);
 });
 
+it('throws when the locked coupon no longer exists', function (): void {
+    $coupon = Coupon::factory()->fixed(500)->active()->create(['code' => 'GONE']);
+    Coupon::query()->whereKey($coupon->getKey())->forceDelete();
+
+    expect(fn () => redeem($coupon, new Money(5000, 'EUR')))->toThrow(CouponNotFound::class);
+});
+
 it('redeems through the model helper', function (): void {
     $coupon = Coupon::factory()->fixed(500)->active()->create();
     $customer = Customer::query()->create(['name' => 'Ada']);

@@ -7,6 +7,7 @@ namespace RoundlyConsulting\Coupons\ValueObjects;
 use NumberFormatter;
 use RoundlyConsulting\Coupons\Exceptions\InvalidMoney;
 use Stringable;
+use ValueError;
 
 /**
  * Immutable money value object: an integer amount in the currency's minor unit
@@ -108,20 +109,26 @@ final readonly class Money implements Stringable
      * Format the amount for display, converting from minor units to the major
      * unit and applying the locale's currency formatting.
      *
-     * Falls back to a plain "CODE 0.00" rendering when the intl formatter cannot
-     * format the value (e.g. a currency code that is not a valid ISO 4217 code).
+     * Amounts are assumed to use two minor digits (÷100), which covers the
+     * common ISO 4217 currencies; see the README note. Falls back to a plain
+     * "CODE 0.00" rendering when the intl formatter cannot format the value
+     * (e.g. an invalid locale or a currency code the formatter rejects).
      */
     public function format(?string $locale = null): string
     {
-        $formatter = new NumberFormatter(
-            $locale ?? 'en_US',
-            NumberFormatter::CURRENCY,
-        );
+        try {
+            $formatter = new NumberFormatter(
+                $locale ?? 'en_US',
+                NumberFormatter::CURRENCY,
+            );
 
-        $formatted = $formatter->formatCurrency(
-            $this->amount / 100,
-            $this->currency,
-        );
+            $formatted = $formatter->formatCurrency(
+                $this->amount / 100,
+                $this->currency,
+            );
+        } catch (ValueError) {
+            $formatted = false;
+        }
 
         if ($formatted === false) {
             return sprintf('%s %0.2f', $this->currency, $this->amount / 100);
