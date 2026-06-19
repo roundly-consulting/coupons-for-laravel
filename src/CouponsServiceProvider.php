@@ -11,6 +11,8 @@ final class CouponsServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->mergeConfigFrom(__DIR__.'/../config/coupons.php', 'coupons');
+
+        $this->app->singleton(CouponManager::class);
     }
 
     public function boot(): void
