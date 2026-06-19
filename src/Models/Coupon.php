@@ -8,6 +8,7 @@ use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Collection;
 use RoundlyConsulting\Coupons\Database\Factories\CouponFactory;
@@ -80,6 +81,33 @@ final class Coupon extends Model
     public function isAtMaximumUsage(): bool
     {
         return $this->max_usage > 0 && $this->usage >= $this->max_usage;
+    }
+
+    /** @return HasMany<CouponRedemption, $this> */
+    public function redemptions(): HasMany
+    {
+        return $this->hasMany(CouponRedemption::class);
+    }
+
+    /**
+     * How many times the given redeemer has used this coupon.
+     */
+    public function usageBy(Model $redeemer): int
+    {
+        return $this->redemptions()
+            ->where('redeemer_type', $redeemer->getMorphClass())
+            ->where('redeemer_id', $redeemer->getKey())
+            ->count();
+    }
+
+    /**
+     * Whether the given redeemer has reached their per-redeemer cap. A zero cap
+     * means unlimited per redeemer.
+     */
+    public function isAtMaximumUsageFor(Model $redeemer): bool
+    {
+        return $this->max_usage_per_redeemer > 0
+            && $this->usageBy($redeemer) >= $this->max_usage_per_redeemer;
     }
 
     public function hasBeenUsedAtLeastOnce(): bool

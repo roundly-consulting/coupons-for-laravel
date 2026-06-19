@@ -18,4 +18,58 @@ return [
 
     'model' => Coupon::class,
 
+    /*
+    |--------------------------------------------------------------------------
+    | Default Currency
+    |--------------------------------------------------------------------------
+    |
+    | The ISO 4217 currency code assumed when one is not supplied explicitly.
+    | A coupon may also lock itself to a single currency via its own column.
+    |
+    */
+
+    'default_currency' => env('COUPONS_CURRENCY', 'USD'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Redeemer Tracking
+    |--------------------------------------------------------------------------
+    |
+    | When enabled, every redemption that carries a redeemer is recorded in the
+    | coupon_redemptions table, which powers per-redeemer usage caps. Disable to
+    | skip writing redemption rows; the global usage cap still applies.
+    |
+    */
+
+    'redeemer' => [
+        'track' => env('COUPONS_TRACK_REDEEMERS', true),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Generated Code Format
+    |--------------------------------------------------------------------------
+    |
+    | Controls auto-generated coupon codes: how many characters and which
+    | alphabet they are drawn from.
+    |
+    */
+
+    'code' => [
+        'length' => env('COUPONS_CODE_LENGTH', 6),
+        'charset' => env('COUPONS_CODE_CHARSET', 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Route Key
+    |--------------------------------------------------------------------------
+    |
+    | The column used for route-model binding of {coupon}. Defaults to the
+    | human-friendly code; set to 'id' to bind by primary key instead.
+    |
+    */
+
+    'route_key' => env('COUPONS_ROUTE_KEY', 'code'),
+
 ];

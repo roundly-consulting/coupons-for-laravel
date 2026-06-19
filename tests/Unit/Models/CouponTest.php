@@ -8,6 +8,8 @@ use Illuminate\Support\Collection;
 use RoundlyConsulting\Coupons\Enums\DiscountType;
 use RoundlyConsulting\Coupons\Exceptions\InvalidMoney;
 use RoundlyConsulting\Coupons\Models\Coupon;
+use RoundlyConsulting\Coupons\Models\CouponRedemption;
+use RoundlyConsulting\Coupons\Tests\Fixtures\Customer;
 use RoundlyConsulting\Coupons\ValueObjects\Money;
 
 it('casts type to the discount enum', function (): void {
@@ -197,6 +199,49 @@ it('checks the minimum spend', function (): void {
         ->and($constrained->meetsMinimumSpend(new Money(999, 'EUR')))->toBeFalse()
         ->and($constrained->meetsMinimumSpend(new Money(1000, 'EUR')))->toBeTrue()
         ->and($constrained->meetsMinimumSpend(new Money(2000, 'EUR')))->toBeTrue();
+});
+
+it('counts usage by a specific redeemer', function (): void {
+    $coupon = Coupon::factory()->create();
+    $customer = Customer::query()->create(['name' => 'Ada']);
+    $other = Customer::query()->create(['name' => 'Lin']);
+
+    CouponRedemption::factory()->count(2)->create([
+        'coupon_id' => $coupon->id,
+        'redeemer_type' => $customer->getMorphClass(),
+        'redeemer_id' => $customer->getKey(),
+    ]);
+
+    expect($coupon->usageBy($customer))->toBe(2)
+        ->and($coupon->usageBy($other))->toBe(0);
+});
+
+it('checks the per-redeemer cap', function (): void {
+    $coupon = Coupon::factory()->create(['max_usage_per_redeemer' => 1]);
+    $customer = Customer::query()->create(['name' => 'Ada']);
+
+    expect($coupon->isAtMaximumUsageFor($customer))->toBeFalse();
+
+    CouponRedemption::factory()->create([
+        'coupon_id' => $coupon->id,
+        'redeemer_type' => $customer->getMorphClass(),
+        'redeemer_id' => $customer->getKey(),
+    ]);
+
+    expect($coupon->isAtMaximumUsageFor($customer))->toBeTrue();
+});
+
+it('treats a zero per-redeemer cap as unlimited', function (): void {
+    $coupon = Coupon::factory()->create(['max_usage_per_redeemer' => 0]);
+    $customer = Customer::query()->create(['name' => 'Ada']);
+
+    CouponRedemption::factory()->create([
+        'coupon_id' => $coupon->id,
+        'redeemer_type' => $customer->getMorphClass(),
+        'redeemer_id' => $customer->getKey(),
+    ]);
+
+    expect($coupon->isAtMaximumUsageFor($customer))->toBeFalse();
 });
 
 it('soft deletes coupons', function (): void {
