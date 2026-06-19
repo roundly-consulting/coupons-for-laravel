@@ -6,6 +6,7 @@ namespace RoundlyConsulting\Coupons\Models;
 
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -66,6 +67,74 @@ final class Coupon extends Model
             'expires_at' => 'datetime',
             'meta' => 'collection',
         ];
+    }
+
+    /**
+     * Coupons whose activation window has started.
+     *
+     * @param  Builder<Coupon>  $query
+     */
+    public function scopeActive(Builder $query): void
+    {
+        $query->whereNotNull('activated_at')
+            ->where('activated_at', '<=', CarbonImmutable::now());
+    }
+
+    /**
+     * Coupons past their expiry.
+     *
+     * @param  Builder<Coupon>  $query
+     */
+    public function scopeExpired(Builder $query): void
+    {
+        $query->whereNotNull('expires_at')
+            ->where('expires_at', '<=', CarbonImmutable::now());
+    }
+
+    /**
+     * Coupons that have reached a positive global usage cap.
+     *
+     * @param  Builder<Coupon>  $query
+     */
+    public function scopeExhausted(Builder $query): void
+    {
+        $query->where('max_usage', '>', 0)
+            ->whereColumn('usage', '>=', 'max_usage');
+    }
+
+    /**
+     * Coupons that can be redeemed right now: active, not expired, not exhausted.
+     *
+     * @param  Builder<Coupon>  $query
+     */
+    public function scopeRedeemable(Builder $query): void
+    {
+        $now = CarbonImmutable::now();
+
+        $query->whereNotNull('activated_at')
+            ->where('activated_at', '<=', $now)
+            ->where(function (Builder $query) use ($now): void {
+                $query->whereNull('expires_at')->orWhere('expires_at', '>', $now);
+            })
+            ->where(function (Builder $query): void {
+                $query->where('max_usage', '<=', 0)->orWhereColumn('usage', '<', 'max_usage');
+            });
+    }
+
+    /**
+     * @param  Builder<Coupon>  $query
+     */
+    public function scopeWhereCode(Builder $query, string $code): void
+    {
+        $query->where('code', $code);
+    }
+
+    public function getRouteKeyName(): string
+    {
+        /** @var string $key */
+        $key = config('coupons.route_key', 'code');
+
+        return $key;
     }
 
     public function canBeApplied(): bool
