@@ -54,4 +54,35 @@ final class CouponFactory extends Factory
             'value' => $value,
         ]);
     }
+
+    public function freeShipping(): self
+    {
+        return $this->state(fn (array $attributes): array => [
+            'type' => DiscountType::FreeShipping,
+            'value' => 0,
+        ]);
+    }
+
+    public function cappedPercentage(int $value = 25, int $maxDiscount = 500): self
+    {
+        return $this->state(fn (array $attributes): array => [
+            'type' => DiscountType::Percentage,
+            'value' => $value,
+            'max_discount' => $maxDiscount,
+        ]);
+    }
+
+    public function withMinimumSpend(int $minimumSpend): self
+    {
+        return $this->state(fn (array $attributes): array => [
+            'minimum_spend' => $minimumSpend,
+        ]);
+    }
+
+    public function forCurrency(string $currency): self
+    {
+        return $this->state(fn (array $attributes): array => [
+            'currency' => mb_strtoupper($currency),
+        ]);
+    }
 }

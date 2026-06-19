@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Collection;
 use RoundlyConsulting\Coupons\Database\Factories\CouponFactory;
 use RoundlyConsulting\Coupons\Enums\DiscountType;
+use RoundlyConsulting\Coupons\Exceptions\InvalidMoney;
 use RoundlyConsulting\Coupons\ValueObjects\Money;
 
 /**
@@ -21,6 +22,10 @@ use RoundlyConsulting\Coupons\ValueObjects\Money;
  * @property int $value
  * @property int $usage
  * @property int $max_usage
+ * @property int $max_usage_per_redeemer
+ * @property ?string $currency
+ * @property ?int $minimum_spend
+ * @property ?int $max_discount
  * @property ?CarbonInterface $activated_at
  * @property ?CarbonInterface $expires_at
  * @property ?Collection<string, mixed> $meta
@@ -50,6 +55,9 @@ final class Coupon extends Model
             'value' => 'integer',
             'usage' => 'integer',
             'max_usage' => 'integer',
+            'max_usage_per_redeemer' => 'integer',
+            'minimum_spend' => 'integer',
+            'max_discount' => 'integer',
             'activated_at' => 'datetime',
             'expires_at' => 'datetime',
             'meta' => 'collection',
@@ -89,9 +97,72 @@ final class Coupon extends Model
         return $this->activated_at?->isPast() ?? false;
     }
 
+    /**
+     * Apply the coupon to a price, returning the new total.
+     *
+     * @throws InvalidMoney when the coupon is currency-locked to another currency.
+     */
     public function apply(Money $price): Money
     {
-        return $this->type->apply($price, $this->value);
+        $this->assertCurrency($price);
+
+        return $this->type->apply($price, $this->value, $this->max_discount);
+    }
+
+    /**
+     * The amount this coupon saves off the given price (in minor units),
+     * respecting the optional discount cap.
+     *
+     * @throws InvalidMoney when the coupon is currency-locked to another currency.
+     */
+    public function discountFor(Money $price): Money
+    {
+        $this->assertCurrency($price);
+
+        return $this->type->discount($price, $this->value, $this->max_discount);
+    }
+
+    public function isFreeShipping(): bool
+    {
+        return $this->type === DiscountType::FreeShipping;
+    }
+
+    /**
+     * Whether the host should zero its own shipping total for this coupon.
+     */
+    public function appliesToShipping(): bool
+    {
+        return $this->isFreeShipping();
+    }
+
+    /**
+     * A coupon with no currency lock applies to any currency; otherwise the
+     * price's currency must match.
+     */
+    public function appliesToCurrency(Money $price): bool
+    {
+        return $this->currency === null
+            || $this->currency === $price->getCurrency();
+    }
+
+    /**
+     * A coupon with no minimum spend always qualifies; otherwise the price must
+     * meet or exceed the threshold (compared in minor units).
+     */
+    public function meetsMinimumSpend(Money $price): bool
+    {
+        return $this->minimum_spend === null
+            || $price->getAmount() >= $this->minimum_spend;
+    }
+
+    /**
+     * @throws InvalidMoney when the coupon is currency-locked to another currency.
+     */
+    private function assertCurrency(Money $price): void
+    {
+        if (! $this->appliesToCurrency($price)) {
+            throw InvalidMoney::currencyMismatch((string) $this->currency, $price->getCurrency());
+        }
     }
 
     public function setMaxUsageTo(int $maxUsage): self

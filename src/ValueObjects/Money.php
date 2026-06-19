@@ -26,6 +26,23 @@ final readonly class Money implements Stringable
         $this->currency = strtoupper($currency);
     }
 
+    /**
+     * A zero amount in the given currency.
+     */
+    public static function zero(string $currency): self
+    {
+        return new self(0, $currency);
+    }
+
+    /**
+     * Build from a major-unit amount (e.g. 10.50 EUR), assuming two minor
+     * digits — see the README note on the minor-unit convention.
+     */
+    public static function fromMajor(float $amount, string $currency): self
+    {
+        return new self((int) round($amount * 100), $currency);
+    }
+
     public function getAmount(): int
     {
         return $this->amount;

@@ -6,6 +6,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use RoundlyConsulting\Coupons\Enums\DiscountType;
+use RoundlyConsulting\Coupons\Exceptions\InvalidMoney;
 use RoundlyConsulting\Coupons\Models\Coupon;
 use RoundlyConsulting\Coupons\ValueObjects\Money;
 
@@ -151,6 +152,51 @@ it('applies a percentage discount to a price', function (): void {
     $result = $coupon->apply(new Money(1000, 'EUR'));
 
     expect($result->getAmount())->toBe(750);
+});
+
+it('returns the discount amount respecting the cap', function (): void {
+    $coupon = Coupon::factory()->cappedPercentage(50, 300)->make();
+
+    expect($coupon->discountFor(new Money(1000, 'EUR'))->getAmount())->toBe(300)
+        ->and($coupon->apply(new Money(1000, 'EUR'))->getAmount())->toBe(700);
+});
+
+it('reports a free-shipping coupon', function (): void {
+    $coupon = Coupon::factory()->freeShipping()->make();
+
+    expect($coupon->isFreeShipping())->toBeTrue()
+        ->and($coupon->appliesToShipping())->toBeTrue()
+        ->and($coupon->discountFor(new Money(1000, 'EUR'))->getAmount())->toBe(0);
+
+    expect(Coupon::factory()->fixed()->make()->isFreeShipping())->toBeFalse();
+});
+
+it('applies to any currency when not locked', function (): void {
+    $coupon = Coupon::factory()->fixed()->make(['currency' => null]);
+
+    expect($coupon->appliesToCurrency(new Money(1000, 'EUR')))->toBeTrue()
+        ->and($coupon->appliesToCurrency(new Money(1000, 'USD')))->toBeTrue();
+});
+
+it('only applies to its locked currency', function (): void {
+    $coupon = Coupon::factory()->fixed()->forCurrency('EUR')->make();
+
+    expect($coupon->appliesToCurrency(new Money(1000, 'EUR')))->toBeTrue()
+        ->and($coupon->appliesToCurrency(new Money(1000, 'USD')))->toBeFalse();
+});
+
+it('throws when applied to a mismatched currency', function (): void {
+    Coupon::factory()->fixed()->forCurrency('EUR')->make()->apply(new Money(1000, 'USD'));
+})->throws(InvalidMoney::class);
+
+it('checks the minimum spend', function (): void {
+    $unconstrained = Coupon::factory()->fixed()->make(['minimum_spend' => null]);
+    $constrained = Coupon::factory()->fixed()->withMinimumSpend(1000)->make();
+
+    expect($unconstrained->meetsMinimumSpend(new Money(1, 'EUR')))->toBeTrue()
+        ->and($constrained->meetsMinimumSpend(new Money(999, 'EUR')))->toBeFalse()
+        ->and($constrained->meetsMinimumSpend(new Money(1000, 'EUR')))->toBeTrue()
+        ->and($constrained->meetsMinimumSpend(new Money(2000, 'EUR')))->toBeTrue();
 });
 
 it('soft deletes coupons', function (): void {

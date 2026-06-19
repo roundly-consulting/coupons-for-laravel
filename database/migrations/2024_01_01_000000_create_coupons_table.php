@@ -18,6 +18,10 @@ return new class extends Migration
             $table->string('code')->unique();
             $table->integer('usage')->default(0);
             $table->integer('max_usage')->default(0);
+            $table->unsignedInteger('max_usage_per_redeemer')->default(0);
+            $table->string('currency', 3)->nullable();
+            $table->unsignedInteger('minimum_spend')->nullable();
+            $table->unsignedInteger('max_discount')->nullable();
             $table->timestamp('activated_at')->nullable();
             $table->timestamp('expires_at')->nullable();
             $table->json('meta')->nullable();

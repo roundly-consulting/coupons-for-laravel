@@ -58,3 +58,15 @@ it('renders an amount for an unknown currency code', function (): void {
 it('casts to a string via the formatter', function (): void {
     expect((string) new Money(1000, 'USD'))->toContain('10');
 });
+
+it('builds a zero amount in a currency', function (): void {
+    expect(Money::zero('eur'))
+        ->getAmount()->toBe(0)
+        ->getCurrency()->toBe('EUR');
+});
+
+it('builds from a major-unit amount', function (): void {
+    expect(Money::fromMajor(10.50, 'eur'))
+        ->getAmount()->toBe(1050)
+        ->getCurrency()->toBe('EUR');
+});
