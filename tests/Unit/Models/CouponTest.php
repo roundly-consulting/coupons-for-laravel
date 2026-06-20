@@ -244,6 +244,95 @@ it('treats a zero per-redeemer cap as unlimited', function (): void {
     expect($coupon->isAtMaximumUsageFor($customer))->toBeFalse();
 });
 
+it('reports remaining global usage, treating a zero cap as unlimited', function (): void {
+    expect(Coupon::factory()->make(['max_usage' => 0, 'usage' => 5])->remainingUsage())->toBeNull()
+        ->and(Coupon::factory()->make(['max_usage' => 10, 'usage' => 7])->remainingUsage())->toBe(3)
+        ->and(Coupon::factory()->make(['max_usage' => 10, 'usage' => 12])->remainingUsage())->toBe(0);
+});
+
+it('reports remaining usage for a redeemer', function (): void {
+    $coupon = Coupon::factory()->create(['max_usage_per_redeemer' => 3]);
+    $customer = Customer::query()->create(['name' => 'Ada']);
+
+    expect($coupon->remainingUsageFor($customer))->toBe(3);
+
+    CouponRedemption::factory()->create([
+        'coupon_id' => $coupon->id,
+        'redeemer_type' => $customer->getMorphClass(),
+        'redeemer_id' => $customer->getKey(),
+    ]);
+
+    expect($coupon->remainingUsageFor($customer))->toBe(2);
+});
+
+it('returns null remaining usage for a redeemer when the cap is unlimited', function (): void {
+    $coupon = Coupon::factory()->create(['max_usage_per_redeemer' => 0]);
+    $customer = Customer::query()->create(['name' => 'Ada']);
+
+    expect($coupon->remainingUsageFor($customer))->toBeNull();
+});
+
+it('returns null remaining usage for a redeemer when tracking is off', function (): void {
+    config()->set('coupons.redeemer.track', false);
+
+    $coupon = Coupon::factory()->create(['max_usage_per_redeemer' => 3]);
+    $customer = Customer::query()->create(['name' => 'Ada']);
+
+    expect($coupon->remainingUsageFor($customer))->toBeNull();
+});
+
+it('reports the usage percentage, clamped and rounded', function (): void {
+    expect(Coupon::factory()->make(['max_usage' => 0, 'usage' => 3])->usagePercentage())->toBeNull()
+        ->and(Coupon::factory()->make(['max_usage' => 10, 'usage' => 7])->usagePercentage())->toBe(70.0)
+        ->and(Coupon::factory()->make(['max_usage' => 3, 'usage' => 1])->usagePercentage())->toBe(33.33)
+        ->and(Coupon::factory()->make(['max_usage' => 10, 'usage' => 15])->usagePercentage())->toBe(100.0);
+});
+
+it('reports whether a redeemer can redeem without throwing', function (): void {
+    $clean = Coupon::factory()->active()->fixed()->create();
+    $customer = Customer::query()->create(['name' => 'Ada']);
+
+    expect($clean->isRedeemableBy($customer, new Money(1000, 'USD')))->toBeTrue()
+        ->and($clean->isRedeemableBy())->toBeTrue();
+
+    $expired = Coupon::factory()->active()->expired()->create();
+    expect($expired->isRedeemableBy())->toBeFalse();
+
+    $atMax = Coupon::factory()->active()->create(['max_usage' => 1, 'usage' => 1]);
+    expect($atMax->isRedeemableBy())->toBeFalse();
+
+    $locked = Coupon::factory()->active()->fixed()->forCurrency('EUR')->create();
+    expect($locked->isRedeemableBy(null, new Money(1000, 'USD')))->toBeFalse();
+
+    $minimum = Coupon::factory()->active()->fixed()->withMinimumSpend(2000)->create();
+    expect($minimum->isRedeemableBy(null, new Money(1000, 'USD')))->toBeFalse();
+
+    $perRedeemer = Coupon::factory()->active()->create(['max_usage_per_redeemer' => 1]);
+    $perRedeemer->redemptions()->create([
+        'redeemer_type' => $customer->getMorphClass(),
+        'redeemer_id' => $customer->getKey(),
+        'amount_discounted' => 100,
+        'currency' => 'USD',
+    ]);
+    expect($perRedeemer->isRedeemableBy($customer))->toBeFalse();
+});
+
+it('previews a discount without throwing on a currency mismatch', function (): void {
+    $fixed = Coupon::factory()->fixed(250)->make();
+    expect($fixed->previewDiscount(new Money(1000, 'USD'))->getAmount())->toBe(250);
+
+    $capped = Coupon::factory()->cappedPercentage(50, 300)->make();
+    expect($capped->previewDiscount(new Money(1000, 'USD'))->getAmount())->toBe(300);
+
+    $freeShipping = Coupon::factory()->freeShipping()->make();
+    expect($freeShipping->previewDiscount(new Money(1000, 'USD'))->getAmount())->toBe(0);
+
+    $locked = Coupon::factory()->fixed(250)->forCurrency('EUR')->make();
+    $preview = $locked->previewDiscount(new Money(1000, 'USD'));
+    expect($preview->getAmount())->toBe(0)
+        ->and($preview->getCurrency())->toBe('USD');
+});
+
 it('soft deletes coupons', function (): void {
     $coupon = Coupon::factory()->create();
 

@@ -18,6 +18,7 @@ use RoundlyConsulting\Coupons\DataTransferObjects\RedeemCouponData;
 use RoundlyConsulting\Coupons\DataTransferObjects\RedemptionResult;
 use RoundlyConsulting\Coupons\Enums\DiscountType;
 use RoundlyConsulting\Coupons\Exceptions\InvalidMoney;
+use RoundlyConsulting\Coupons\Support\RedemptionGuard;
 use RoundlyConsulting\Coupons\ValueObjects\Money;
 
 /**
@@ -253,6 +254,69 @@ final class Coupon extends Model
     {
         return $this->minimum_spend === null
             || $price->getAmount() >= $this->minimum_spend;
+    }
+
+    /**
+     * How many redemptions remain before the global cap is reached, or null when
+     * the coupon has no positive cap (unlimited).
+     */
+    public function remainingUsage(): ?int
+    {
+        if ($this->max_usage <= 0) {
+            return null;
+        }
+
+        return max(0, $this->max_usage - $this->usage);
+    }
+
+    /**
+     * How many redemptions the given redeemer has left, or null when per-redeemer
+     * caps cannot be enforced (tracking disabled) or are unlimited (cap <= 0).
+     */
+    public function remainingUsageFor(Model $redeemer): ?int
+    {
+        if (config('coupons.redeemer.track', true) !== true || $this->max_usage_per_redeemer <= 0) {
+            return null;
+        }
+
+        return max(0, $this->max_usage_per_redeemer - $this->usageBy($redeemer));
+    }
+
+    /**
+     * The share of the global cap already consumed (0..100), or null when there
+     * is no positive cap (unlimited).
+     */
+    public function usagePercentage(): ?float
+    {
+        if ($this->max_usage <= 0) {
+            return null;
+        }
+
+        return round(min(100.0, max(0.0, $this->usage / $this->max_usage * 100)), 2);
+    }
+
+    /**
+     * Whether this coupon could be redeemed right now by the given redeemer, using
+     * the same shared guard the redemption action runs. Pass a price to also check
+     * currency and minimum spend; omit it to skip those checks. Never throws.
+     */
+    public function isRedeemableBy(?Model $redeemer = null, ?Money $price = null): bool
+    {
+        return app(RedemptionGuard::class)->firstFailure($this, $price, $redeemer) === null;
+    }
+
+    /**
+     * The discount this coupon would apply to the given price, the display-safe
+     * sibling of discountFor(): returns zero on a currency mismatch instead of
+     * throwing, so it is safe to call from views.
+     */
+    public function previewDiscount(Money $price): Money
+    {
+        if (! $this->appliesToCurrency($price)) {
+            return Money::zero($price->getCurrency());
+        }
+
+        return $this->discountFor($price);
     }
 
     /**
