@@ -9,7 +9,7 @@ runtime dependencies.
 
 ## Requirements
 
-- PHP 8.3 or 8.4
+- PHP 8.4
 - Laravel 12 or 13
 
 ## Installation
