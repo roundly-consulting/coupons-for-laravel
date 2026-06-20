@@ -11,7 +11,9 @@ use RoundlyConsulting\Coupons\CouponManager;
 use RoundlyConsulting\Coupons\DataTransferObjects\CreateCouponData;
 use RoundlyConsulting\Coupons\DataTransferObjects\RedemptionResult;
 use RoundlyConsulting\Coupons\Enums\DiscountType;
+use RoundlyConsulting\Coupons\Enums\RedemptionFailureReason;
 use RoundlyConsulting\Coupons\Models\Coupon;
+use RoundlyConsulting\Coupons\Support\RedemptionGuard;
 use RoundlyConsulting\Coupons\ValueObjects\Money;
 
 /**
@@ -26,6 +28,9 @@ final class FakeCouponManager extends CouponManager
 
     /** @var list<RedemptionResult> */
     private array $redeemed = [];
+
+    /** @var list<array{code: string, reason: RedemptionFailureReason}> */
+    private array $failed = [];
 
     public function generate(DiscountType $type, int $value, ?string $code = null, int $maxUsage = 0): Coupon
     {
@@ -90,6 +95,12 @@ final class FakeCouponManager extends CouponManager
     {
         $model = $coupon instanceof Coupon ? $coupon : new Coupon(['code' => $coupon]);
 
+        $reason = $this->failureFor($model, $price, $redeemer);
+
+        if ($reason !== null) {
+            $this->failed[] = ['code' => (string) $model->code, 'reason' => $reason];
+        }
+
         $result = new RedemptionResult(
             coupon: $model,
             discount: Money::zero($price->getCurrency()),
@@ -103,17 +114,73 @@ final class FakeCouponManager extends CouponManager
         return $result;
     }
 
-    public function assertRedeemed(?callable $callback = null): void
+    /**
+     * Assert a coupon was redeemed. The preferred form takes the coupon code; for
+     * backward compatibility a callable passed as the first argument is treated as
+     * the legacy callback-only signature.
+     */
+    public function assertRedeemed(string|callable|null $code = null, ?callable $callback = null): void
     {
-        if ($callback === null) {
+        // Legacy shape: assertRedeemed($callback).
+        if (is_callable($code)) {
+            $callback = $code;
+            $code = null;
+        }
+
+        if ($code === null && $callback === null) {
             Assert::assertNotEmpty($this->redeemed, 'Expected a coupon to be redeemed, but none were.');
 
             return;
         }
 
-        $matched = array_filter($this->redeemed, static fn ($result): bool => $callback($result) === true);
+        $matched = array_filter($this->redeemed, static function (RedemptionResult $result) use ($code, $callback): bool {
+            if ($code !== null && $result->coupon->code !== $code) {
+                return false;
+            }
 
-        Assert::assertNotEmpty($matched, 'Expected a redemption matching the callback, but none did.');
+            return $callback === null || $callback($result) === true;
+        });
+
+        Assert::assertNotEmpty($matched, 'Expected a matching redemption, but none were recorded.');
+    }
+
+    /**
+     * The guard reason the fake should record, or null. The fake never throws —
+     * it is a recording double — and it deliberately ignores the "inactive"
+     * reason for a coupon that simply has no activation date (a freshly faked
+     * coupon), so a plain redeem of such a coupon still counts as a success.
+     */
+    private function failureFor(Coupon $coupon, Money $price, ?Model $redeemer): ?RedemptionFailureReason
+    {
+        $reason = app(RedemptionGuard::class)->firstFailure($coupon, $price, $redeemer);
+
+        if ($reason === RedemptionFailureReason::Expired
+            && $coupon->activated_at === null
+            && $coupon->expires_at === null) {
+            return null;
+        }
+
+        return $reason;
+    }
+
+    public function assertNotRedeemed(string $code): void
+    {
+        $matched = array_filter($this->redeemed, static fn (RedemptionResult $result): bool => $result->coupon->code === $code);
+
+        Assert::assertEmpty($matched, "Expected coupon \"{$code}\" not to be redeemed, but it was.");
+    }
+
+    public function assertRedemptionFailed(string $code, ?string $reason = null): void
+    {
+        $matched = array_filter($this->failed, static function (array $entry) use ($code, $reason): bool {
+            if ($entry['code'] !== $code) {
+                return false;
+            }
+
+            return $reason === null || $entry['reason']->value === $reason;
+        });
+
+        Assert::assertNotEmpty($matched, "Expected a failed redemption for coupon \"{$code}\", but none were recorded.");
     }
 
     public function assertNothingRedeemed(): void
