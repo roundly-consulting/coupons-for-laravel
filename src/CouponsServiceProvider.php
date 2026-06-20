@@ -22,6 +22,7 @@ final class CouponsServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->loadMigrationsFrom(__DIR__.'/../database/migrations');
+        $this->loadTranslationsFrom(__DIR__.'/../resources/lang', 'coupons');
 
         if ($this->app->runningInConsole()) {
             $this->commands([
@@ -36,6 +37,10 @@ final class CouponsServiceProvider extends ServiceProvider
             $this->publishes([
                 __DIR__.'/../database/migrations' => database_path('migrations'),
             ], 'coupons-migrations');
+
+            $this->publishes([
+                __DIR__.'/../resources/lang' => $this->app->langPath('vendor/coupons'),
+            ], 'coupons-translations');
         }
     }
 }

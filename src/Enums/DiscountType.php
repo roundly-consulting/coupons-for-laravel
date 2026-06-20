@@ -61,4 +61,29 @@ enum DiscountType: string
 
         return $discount;
     }
+
+    /**
+     * A short, translatable label for this type, suited to admin UIs.
+     */
+    public function label(): string
+    {
+        return (string) trans("coupons::messages.type.{$this->value}.label");
+    }
+
+    /**
+     * A translatable, human description of what this type does.
+     */
+    public function description(): string
+    {
+        return (string) trans("coupons::messages.type.{$this->value}.description");
+    }
+
+    /**
+     * Whether this type needs a coupon value. Free shipping carries no value;
+     * fixed and percentage do.
+     */
+    public function requiresValue(): bool
+    {
+        return $this !== self::FreeShipping;
+    }
 }

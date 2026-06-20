@@ -97,6 +97,73 @@ final readonly class Money implements Stringable
         return $this->amount === 0;
     }
 
+    public function isPositive(): bool
+    {
+        return $this->amount > 0;
+    }
+
+    /**
+     * A whole-percent share of this amount, rounded to the nearest minor unit
+     * (e.g. 25% of 2000 is 500).
+     */
+    public function percentageOf(int $percent): self
+    {
+        return $this->multiply($percent / 100);
+    }
+
+    /**
+     * Split this amount across the given integer ratios so the parts always sum
+     * back to the original. Whole minor units are distributed first, then any
+     * leftover units are handed out one at a time to the largest remainders, so
+     * no minor unit is lost or invented.
+     *
+     * @param  list<int>  $ratios
+     * @return list<self>
+     *
+     * @throws InvalidMoney when the ratio total is not positive.
+     */
+    public function allocate(array $ratios): array
+    {
+        $total = array_sum($ratios);
+
+        if ($total <= 0) {
+            throw InvalidMoney::nonPositiveRatioTotal();
+        }
+
+        $shares = [];
+        $remainders = [];
+        $allocated = 0;
+
+        foreach ($ratios as $index => $ratio) {
+            $exact = $this->amount * $ratio / $total;
+            $share = (int) floor($exact);
+            $shares[$index] = $share;
+            $remainders[$index] = $exact - $share;
+            $allocated += $share;
+        }
+
+        $leftover = $this->amount - $allocated;
+
+        // Hand the leftover minor units to the largest fractional remainders.
+        arsort($remainders);
+
+        foreach (array_keys($remainders) as $index) {
+            if ($leftover <= 0) {
+                break;
+            }
+
+            $shares[$index]++;
+            $leftover--;
+        }
+
+        ksort($shares);
+
+        return array_values(array_map(
+            fn (int $share): self => new self($share, $this->currency),
+            $shares,
+        ));
+    }
+
     private function assertSameCurrency(self $other): void
     {
         if ($this->currency !== $other->currency) {

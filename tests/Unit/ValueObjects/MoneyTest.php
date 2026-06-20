@@ -71,3 +71,63 @@ it('builds from a major-unit amount', function (): void {
         ->getAmount()->toBe(1050)
         ->getCurrency()->toBe('EUR');
 });
+
+it('reports whether the amount is positive', function (): void {
+    expect((new Money(1, 'USD'))->isPositive())->toBeTrue()
+        ->and((new Money(0, 'USD'))->isPositive())->toBeFalse()
+        ->and(Money::zero('USD')->isPositive())->toBeFalse();
+});
+
+it('computes a whole-percent share', function (): void {
+    expect((new Money(2000, 'USD'))->percentageOf(25))
+        ->getAmount()->toBe(500)
+        ->getCurrency()->toBe('USD');
+
+    expect((new Money(1000, 'USD'))->percentageOf(33)->getAmount())->toBe(330);
+});
+
+it('allocates an even split distributing the remainder', function (): void {
+    $parts = (new Money(100, 'USD'))->allocate([1, 1, 1]);
+
+    expect(array_map(fn (Money $m): int => $m->getAmount(), $parts))->toBe([34, 33, 33])
+        ->and(array_sum(array_map(fn (Money $m): int => $m->getAmount(), $parts)))->toBe(100);
+});
+
+it('allocates a weighted split', function (): void {
+    $parts = (new Money(100, 'USD'))->allocate([7, 3]);
+
+    expect(array_map(fn (Money $m): int => $m->getAmount(), $parts))->toBe([70, 30]);
+});
+
+it('allocates an odd amount preserving the sum', function (): void {
+    $parts = (new Money(101, 'USD'))->allocate([1, 1]);
+
+    expect(array_map(fn (Money $m): int => $m->getAmount(), $parts))->toBe([51, 50]);
+});
+
+it('allocates a single bucket as the whole amount', function (): void {
+    $parts = (new Money(100, 'USD'))->allocate([1]);
+
+    expect($parts)->toHaveCount(1)
+        ->and($parts[0]->getAmount())->toBe(100);
+});
+
+it('preserves the currency across allocated parts', function (): void {
+    foreach ((new Money(100, 'eur'))->allocate([1, 1]) as $part) {
+        expect($part->getCurrency())->toBe('EUR');
+    }
+});
+
+it('preserves the sum across many allocations', function (): void {
+    $cases = [[5, 3, 2], [1, 1, 1, 1], [9, 1], [10, 20, 30], [1, 2, 3, 4, 5]];
+
+    foreach ($cases as $ratios) {
+        $parts = (new Money(997, 'USD'))->allocate($ratios);
+
+        expect(array_sum(array_map(fn (Money $m): int => $m->getAmount(), $parts)))->toBe(997);
+    }
+});
+
+it('throws when allocating across a non-positive ratio total', function (): void {
+    (new Money(100, 'USD'))->allocate([0, 0]);
+})->throws(InvalidMoney::class);

@@ -49,3 +49,21 @@ it('leaves a percentage discount unchanged below the cap', function (): void {
 it('caps a fixed discount at the maximum discount', function (): void {
     expect(DiscountType::Fixed->discount(new Money(1000, 'EUR'), 800, maxDiscount: 500)->getAmount())->toBe(500);
 });
+
+it('exposes a translatable label for each type', function (): void {
+    expect(DiscountType::Fixed->label())->toBe('Fixed amount')
+        ->and(DiscountType::Percentage->label())->toBe('Percentage')
+        ->and(DiscountType::FreeShipping->label())->toBe('Free shipping');
+});
+
+it('exposes a translatable description for each type', function (): void {
+    expect(DiscountType::Fixed->description())->toBe('Subtracts a fixed amount from the price.')
+        ->and(DiscountType::Percentage->description())->toBe('Subtracts a percentage of the price.')
+        ->and(DiscountType::FreeShipping->description())->toBe('Marks the order for free shipping.');
+});
+
+it('knows which types require a value', function (): void {
+    expect(DiscountType::Fixed->requiresValue())->toBeTrue()
+        ->and(DiscountType::Percentage->requiresValue())->toBeTrue()
+        ->and(DiscountType::FreeShipping->requiresValue())->toBeFalse();
+});

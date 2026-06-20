@@ -13,4 +13,9 @@ final class InvalidMoney extends CouponException
     {
         return new self("Cannot operate on Money in different currencies: {$left} and {$right}.");
     }
+
+    public static function nonPositiveRatioTotal(): self
+    {
+        return new self('Cannot allocate Money across ratios whose total is not positive.');
+    }
 }
