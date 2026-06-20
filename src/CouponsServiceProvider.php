@@ -7,6 +7,7 @@ namespace RoundlyConsulting\Coupons;
 use Illuminate\Support\ServiceProvider;
 use RoundlyConsulting\Coupons\Commands\ExpireCouponsCommand;
 use RoundlyConsulting\Coupons\Commands\PruneCouponsCommand;
+use RoundlyConsulting\Coupons\Support\RedemptionGuard;
 
 final class CouponsServiceProvider extends ServiceProvider
 {
@@ -14,6 +15,7 @@ final class CouponsServiceProvider extends ServiceProvider
     {
         $this->mergeConfigFrom(__DIR__.'/../config/coupons.php', 'coupons');
 
+        $this->app->singleton(RedemptionGuard::class);
         $this->app->singleton(CouponManager::class);
     }
 

@@ -17,10 +17,15 @@ use RoundlyConsulting\Coupons\Exceptions\CouponNotFound;
 use RoundlyConsulting\Coupons\Exceptions\CurrencyMismatch;
 use RoundlyConsulting\Coupons\Exceptions\MinimumSpendNotMet;
 use RoundlyConsulting\Coupons\Models\Coupon;
+use RoundlyConsulting\Coupons\Support\RedemptionGuard;
 use RoundlyConsulting\Coupons\ValueObjects\Money;
 
 final class RedeemCouponAction
 {
+    public function __construct(
+        private readonly RedemptionGuard $guard,
+    ) {}
+
     /**
      * Validate a coupon and redeem it atomically: the eligibility checks and the
      * usage increment run inside a single transaction against a row locked with
@@ -67,28 +72,17 @@ final class RedeemCouponAction
     }
 
     /**
+     * Delegate eligibility to the shared guard, preserving the exact exception
+     * types, messages, and precedence callers depended on before extraction.
+     *
      * @throws CurrencyMismatch|MinimumSpendNotMet|CouponExpired|CouponAtMaxUsage|CouponAlreadyRedeemed
      */
     private function guard(Coupon $coupon, Money $price, ?Model $redeemer): void
     {
-        if (! $coupon->appliesToCurrency($price)) {
-            throw CurrencyMismatch::forCode($coupon->code, (string) $coupon->currency, $price->getCurrency());
-        }
+        $reason = $this->guard->firstFailure($coupon, $price, $redeemer);
 
-        if (! $coupon->meetsMinimumSpend($price)) {
-            throw MinimumSpendNotMet::forCode($coupon->code, (int) $coupon->minimum_spend);
-        }
-
-        if (! $coupon->isActive() || $coupon->isExpired()) {
-            throw CouponExpired::forCode($coupon->code);
-        }
-
-        if ($coupon->isAtMaximumUsage()) {
-            throw CouponAtMaxUsage::forCode($coupon->code);
-        }
-
-        if ($redeemer !== null && $coupon->isAtMaximumUsageFor($redeemer)) {
-            throw CouponAlreadyRedeemed::forCode($coupon->code);
+        if ($reason !== null) {
+            $this->guard->throwFor($coupon, $reason, $price);
         }
     }
 
