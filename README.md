@@ -1,3 +1,11 @@
+<!-- roundly-hero:start -->
+<p align="center">
+  <a href="https://roundly-consulting.com/open-source/docs/coupons-for-laravel?utm_source=github&utm_medium=readme&utm_campaign=open-source&utm_content=coupons-for-laravel">
+    <img src="art/hero.png" alt="Coupons for Laravel — Roundly open source" width="100%">
+  </a>
+</p>
+<!-- roundly-hero:end -->
+
 # Coupons for Laravel
 
 Create, manage, redeem, and apply discount coupons in Laravel. Coupons support fixed-amount,
