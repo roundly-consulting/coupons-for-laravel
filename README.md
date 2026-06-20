@@ -31,6 +31,13 @@ Optionally publish the config file:
 php artisan vendor:publish --tag="coupons-config"
 ```
 
+Optionally publish the translation strings (the validation-rule and discount-type messages)
+to customise or translate them:
+
+```bash
+php artisan vendor:publish --tag="coupons-translations"
+```
+
 ## Configuration
 
 The published `config/coupons.php` exposes:
@@ -89,6 +96,13 @@ $price->format('en_US');                  // "€10.00"
 
 Money::zero('EUR');                       // €0.00
 Money::fromMajor(10.50, 'EUR');           // €10.50 (1050 minor units)
+
+$price->isPositive();        // true
+$price->percentageOf(25);    // €2.50 (25% of €10.00)
+
+// Penny-accurate split: the parts always sum back to the original.
+$price->allocate([1, 1, 1]); // [€3.34, €3.33, €3.33]
+$price->allocate([7, 3]);    // [€7.00, €3.00]
 ```
 
 ### Discount types
@@ -111,6 +125,11 @@ DiscountType::Percentage->apply(new Money(1000, 'EUR'), 50, maxDiscount: 300); /
 // Free shipping is a marker: it discounts nothing from the price. The host
 // zeroes its own shipping total when the redemption reports free shipping.
 DiscountType::FreeShipping->apply(new Money(1000, 'EUR'), 0); // €10.00 (unchanged)
+
+// Translatable labels and descriptions for admin UIs:
+DiscountType::Percentage->label();         // "Percentage"
+DiscountType::Percentage->description();   // "Subtracts a percentage of the price."
+DiscountType::FreeShipping->requiresValue(); // false (Fixed/Percentage are true)
 ```
 
 ### The `Coupons` facade
@@ -128,7 +147,17 @@ $coupon = Coupons::find('SAVE20');        // ?Coupon
 $coupon = Coupons::findOrFail('SAVE20');  // throws CouponNotFound
 
 $result = Coupons::redeem('SAVE20', new Money(5000, 'EUR'), redeemer: $user);
+
+Coupons::exists('SAVE20');                // bool
+Coupons::redeemable()->get();             // query builder of redeemable coupons
+Coupons::revoke('SAVE20');                // expire it now (reversible), fires CouponRevoked
+Coupons::createQuietly($data);            // create without dispatching CouponCreated
 ```
+
+`revoke()` is a reversible kill-switch: it sets `expires_at` to now (the row is **not**
+deleted) and fires `CouponRevoked`. Re-activate later with `$coupon->expire($future)->save()`
+or by clearing `expires_at`. `createQuietly()` is for seeders and fixtures that don't want
+`CouponCreated` listeners to fire.
 
 ### Creating coupons
 
@@ -202,6 +231,63 @@ $coupon->usageBy($user);                // int
 $coupon->isAtMaximumUsageFor($user);    // bool — "one per customer" when cap is 1
 ```
 
+### Display helpers (non-throwing)
+
+For views and APIs, read coupon state without manual math or try/catch. Each is safe to call
+anywhere:
+
+```php
+$coupon->remainingUsage();            // ?int  — null when unlimited (max_usage <= 0)
+$coupon->remainingUsageFor($user);    // ?int  — null when untracked or per-redeemer unlimited
+$coupon->usagePercentage();           // ?float (0..100) — null when unlimited
+$coupon->isRedeemableBy($user, $cart); // bool — no exceptions; pass a price to also check
+                                       //        currency + minimum spend (both optional)
+$coupon->previewDiscount($cart);      // Money — never throws; zero on a currency mismatch
+```
+
+`isRedeemableBy()` and the validation rule below both run the **same** eligibility checks as
+`redeem()`, so they never drift out of sync.
+
+### Redeemer trait
+
+Add `HasCoupons` to your redeemer model (typically `User`) for a first-class redeemer API:
+
+```php
+use RoundlyConsulting\Coupons\Concerns\HasCoupons;
+
+class User extends Authenticatable
+{
+    use HasCoupons;
+}
+```
+
+```php
+$result  = $user->redeemCoupon('SAVE20', new Money(5000, 'EUR')); // RedemptionResult
+$history = $user->couponRedemptions;                              // morphMany history
+$used    = $user->hasRedeemed('SAVE20');                          // bool (tracked only)
+```
+
+With no cart total, `redeemCoupon()` uses a zero amount in `coupons.default_currency`, so a
+coupon with a minimum spend correctly rejects an empty basket. `hasRedeemed()` reflects only
+tracked redemptions (`coupons.redeemer.track = true`, the default).
+
+### Validation rule
+
+`Rules\Redeemable` validates a coupon-code form field and reports a precise, translatable
+message for the first failing reason — no need to catch six exceptions:
+
+```php
+use RoundlyConsulting\Coupons\Rules\Redeemable;
+
+$request->validate([
+    'code' => ['required', new Redeemable(cartTotal: $cart, redeemer: $request->user())],
+]);
+```
+
+Both `cartTotal` and `redeemer` are optional: omit the cart total to skip currency and
+minimum-spend checks, omit the redeemer to skip per-redeemer caps. Messages live in
+`resources/lang/en/messages.php` and are publishable via the `coupons-translations` tag.
+
 ### Query scopes & route-model binding
 
 ```php
@@ -241,11 +327,17 @@ $fake = Coupons::fake();
 
 Coupons::redeem('SAVE20', new Money(5000, 'EUR'), redeemer: $user);
 
-$fake->assertRedeemed();
-$fake->assertRedeemed(fn ($result) => $result->coupon->code === 'SAVE20');
+$fake->assertRedeemed('SAVE20');                                   // by code
+$fake->assertRedeemed('SAVE20', fn ($result) => /* ... */ true);   // by code + callback
+$fake->assertNotRedeemed('OTHER');
+$fake->assertRedemptionFailed('OLD', 'expired');                   // reason optional
 $fake->assertNothingRedeemed();
 $fake->assertCreated();
 ```
+
+> **Note:** `assertRedeemed()` now takes the coupon code as its first argument. The legacy
+> callback-only form (`assertRedeemed(fn ($result) => ...)`) still works for backward
+> compatibility.
 
 ### Working with a coupon
 
@@ -272,17 +364,22 @@ $discounted = $coupon->apply(new Money(5000, 'EUR')); // €40.00 for 20% off
 
 ### Listening for events
 
-The package dispatches `CouponCreated` when a coupon is created and `CouponRedeemed` when one
-is redeemed:
+The package dispatches these events the host app can listen to:
+
+| Event | When | Payload |
+|---|---|---|
+| `CouponCreated` | a coupon is created (not via `createQuietly`) | `Coupon $coupon` |
+| `CouponRedeemed` | a redemption succeeds | `Coupon $coupon`, `RedemptionResult $result` |
+| `CouponRedemptionFailed` | a redemption attempt is rejected | `string $code`, `RedemptionFailureReason $reason`, `?Model $redeemer` |
+| `CouponExhausted` | a redemption consumes the final available use (fires **once**) | `Coupon $coupon` |
+| `CouponRevoked` | a coupon is revoked via `Coupons::revoke()` | `Coupon $coupon` |
 
 ```php
 use Illuminate\Support\Facades\Event;
 use RoundlyConsulting\Coupons\Events\CouponCreated;
 use RoundlyConsulting\Coupons\Events\CouponRedeemed;
-
-Event::listen(function (CouponCreated $event): void {
-    logger()->info('Coupon created', ['code' => $event->coupon->code]);
-});
+use RoundlyConsulting\Coupons\Events\CouponRedemptionFailed;
+use RoundlyConsulting\Coupons\Events\CouponExhausted;
 
 Event::listen(function (CouponRedeemed $event): void {
     logger()->info('Coupon redeemed', [
@@ -290,7 +387,23 @@ Event::listen(function (CouponRedeemed $event): void {
         'discount' => $event->result->discount->getAmount(),
     ]);
 });
+
+Event::listen(function (CouponRedemptionFailed $event): void {
+    logger()->warning('Coupon rejected', [
+        'code' => $event->code,
+        'reason' => $event->reason->value, // e.g. "expired", "at_max_usage"
+    ]);
+});
+
+Event::listen(function (CouponExhausted $event): void {
+    logger()->info('Coupon exhausted', ['code' => $event->coupon->code]);
+});
 ```
+
+`CouponRedemptionFailed` fires from the redemption attempt (the single mutating path), once
+per rejected attempt, and the matching exception is still thrown. `CouponExhausted` fires
+exactly once — on the redemption that brings `usage` up to `max_usage` — never for unlimited
+coupons and never again on a later rejected attempt.
 
 ### Per-redeemer tracking migration
 

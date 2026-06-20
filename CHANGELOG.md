@@ -7,6 +7,30 @@ All notable changes to `coupons-for-laravel` will be documented in this file.
 Pre-1.0: the package is unreleased, so the `create_coupons_table` migration was edited in
 place rather than evolved with a follow-up migration. Re-run migrations on a fresh database.
 
+### Added — DX, trait, rule, and richer events (1.2, additive)
+
+All additive — no existing public signature changed. No new config keys and no new migration
+(revoke reuses `expires_at`).
+
+- Non-throwing coupon read helpers: `remainingUsage()`, `remainingUsageFor()`,
+  `usagePercentage()`, `isRedeemableBy()`, and `previewDiscount()`.
+- `Concerns\HasCoupons` trait for redeemer models: `redeemCoupon()`, `couponRedemptions()`,
+  `hasRedeemed()` — all delegating to the same redemption action.
+- `Rules\Redeemable` validation rule with per-reason, translatable messages, sharing the same
+  eligibility checks as redemption. Ships `resources/lang/en/messages.php` (publish tag
+  `coupons-translations`).
+- New events: `CouponRedemptionFailed` (every rejected attempt), `CouponExhausted` (once, on
+  the cap-reaching redemption), and `CouponRevoked`.
+- `Money::isPositive()`, `percentageOf()`, and a penny-accurate `allocate()`; `DiscountType`
+  `label()`, `description()`, and `requiresValue()`.
+- Manager/facade additions: `redeemable()`, `exists()`, `revoke()` (reversible, expires now),
+  and `createQuietly()`.
+- Testing fake: `assertRedeemed($code)`, `assertNotRedeemed()`, `assertRedemptionFailed()`,
+  plus `redeemable()`/`exists()`/`revoke()`/`createQuietly()` parity. `assertRedeemed()` now
+  takes a code first; the legacy callback-only form still works via a shim.
+- Shared `Support\RedemptionGuard` evaluator and `Enums\RedemptionFailureReason`, so the
+  action, the model helpers, the rule, and the fake never duplicate eligibility logic.
+
 ### Added
 
 - Free-shipping and capped-percentage discount types; optional per-coupon currency lock and
