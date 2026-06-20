@@ -12,6 +12,7 @@ use RoundlyConsulting\Coupons\DataTransferObjects\CreateCouponData;
 use RoundlyConsulting\Coupons\DataTransferObjects\RedeemCouponData;
 use RoundlyConsulting\Coupons\DataTransferObjects\RedemptionResult;
 use RoundlyConsulting\Coupons\Enums\DiscountType;
+use RoundlyConsulting\Coupons\Events\CouponRevoked;
 use RoundlyConsulting\Coupons\Exceptions\CouponNotFound;
 use RoundlyConsulting\Coupons\Facades\Coupons;
 use RoundlyConsulting\Coupons\Models\Coupon;
@@ -43,9 +44,52 @@ class CouponManager
         return $this->createCoupon->execute($data);
     }
 
+    /**
+     * Create a coupon without dispatching CouponCreated, for seeders and fixtures.
+     */
+    public function createQuietly(CreateCouponData $data): Coupon
+    {
+        return $this->createCoupon->execute($data, quiet: true);
+    }
+
     public function find(string $code): ?Coupon
     {
         return $this->newQuery()->where('code', $code)->first();
+    }
+
+    /**
+     * A query scoped to coupons that can be redeemed right now.
+     *
+     * @return Builder<Coupon>
+     */
+    public function redeemable(): Builder
+    {
+        return $this->newQuery()->redeemable();
+    }
+
+    /**
+     * Whether a coupon with the given code exists.
+     */
+    public function exists(string $code): bool
+    {
+        return $this->newQuery()->whereCode($code)->exists();
+    }
+
+    /**
+     * Revoke a coupon by expiring it immediately. This is reversible — the row is
+     * not deleted, only its expires_at is set to now — and fires CouponRevoked.
+     *
+     * @throws CouponNotFound when no coupon matches the code.
+     */
+    public function revoke(string $code): Coupon
+    {
+        $coupon = $this->findOrFail($code);
+
+        $coupon->expire()->save();
+
+        CouponRevoked::dispatch($coupon);
+
+        return $coupon;
     }
 
     /**

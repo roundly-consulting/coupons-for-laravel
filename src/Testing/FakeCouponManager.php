@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace RoundlyConsulting\Coupons\Testing;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use PHPUnit\Framework\Assert;
 use RoundlyConsulting\Coupons\CouponManager;
@@ -46,6 +47,41 @@ final class FakeCouponManager extends CouponManager
         ]);
 
         $this->created[] = $coupon;
+
+        return $coupon;
+    }
+
+    public function createQuietly(CreateCouponData $data): Coupon
+    {
+        return $this->create($data);
+    }
+
+    /**
+     * A DB-free empty builder, so callers can treat the fake like the real
+     * manager without touching a database.
+     *
+     * @return Builder<Coupon>
+     */
+    public function redeemable(): Builder
+    {
+        return Coupon::query()->whereRaw('1 = 0');
+    }
+
+    public function exists(string $code): bool
+    {
+        foreach ($this->created as $coupon) {
+            if ($coupon->code === $code) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public function revoke(string $code): Coupon
+    {
+        $coupon = new Coupon(['code' => $code]);
+        $coupon->expire();
 
         return $coupon;
     }

@@ -2,9 +2,12 @@
 
 declare(strict_types=1);
 
+use Illuminate\Support\Facades\Event;
 use RoundlyConsulting\Coupons\CouponManager;
 use RoundlyConsulting\Coupons\DataTransferObjects\CreateCouponData;
 use RoundlyConsulting\Coupons\Enums\DiscountType;
+use RoundlyConsulting\Coupons\Events\CouponCreated;
+use RoundlyConsulting\Coupons\Events\CouponRevoked;
 use RoundlyConsulting\Coupons\Exceptions\CouponNotFound;
 use RoundlyConsulting\Coupons\Models\Coupon;
 use RoundlyConsulting\Coupons\ValueObjects\Money;
@@ -62,4 +65,50 @@ it('redeems a coupon', function (): void {
 
 it('is a shared singleton', function (): void {
     expect(app(CouponManager::class))->toBe(app(CouponManager::class));
+});
+
+it('queries only redeemable coupons', function (): void {
+    Coupon::factory()->active()->fixed()->create(['code' => 'GOOD']);
+    Coupon::factory()->active()->expired()->create(['code' => 'OLD']);
+    Coupon::factory()->active()->create(['code' => 'MAXED', 'max_usage' => 1, 'usage' => 1]);
+    Coupon::factory()->create(['code' => 'INACTIVE', 'activated_at' => null]);
+
+    $codes = $this->manager->redeemable()->pluck('code')->all();
+
+    expect($codes)->toBe(['GOOD']);
+});
+
+it('reports whether a coupon code exists', function (): void {
+    Coupon::factory()->create(['code' => 'HERE']);
+
+    expect($this->manager->exists('HERE'))->toBeTrue()
+        ->and($this->manager->exists('GONE'))->toBeFalse();
+});
+
+it('revokes a coupon by expiring it without deleting', function (): void {
+    Event::fake([CouponRevoked::class]);
+    Coupon::factory()->active()->fixed()->create(['code' => 'KILL']);
+
+    $coupon = $this->manager->revoke('KILL');
+
+    expect($coupon->isExpired())->toBeTrue()
+        ->and($this->manager->redeemable()->pluck('code')->all())->not->toContain('KILL');
+
+    $this->assertDatabaseHas('coupons', ['code' => 'KILL']);
+    Event::assertDispatched(CouponRevoked::class);
+});
+
+it('throws when revoking an unknown code', function (): void {
+    $this->manager->revoke('MISSING');
+})->throws(CouponNotFound::class);
+
+it('creates a coupon quietly without the created event', function (): void {
+    Event::fake([CouponCreated::class]);
+
+    $coupon = $this->manager->createQuietly(new CreateCouponData(DiscountType::Fixed, 100, 'QUIET'));
+
+    expect($coupon->exists)->toBeTrue()
+        ->and($coupon->code)->toBe('QUIET');
+    $this->assertDatabaseHas('coupons', ['code' => 'QUIET']);
+    Event::assertNotDispatched(CouponCreated::class);
 });

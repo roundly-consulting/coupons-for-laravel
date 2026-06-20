@@ -11,7 +11,11 @@ use RoundlyConsulting\Coupons\Models\Coupon;
 
 final class CreateCouponAction
 {
-    public function execute(CreateCouponData $data): Coupon
+    /**
+     * Create and persist a coupon. Pass $quiet to skip the CouponCreated event,
+     * for seeders and fixtures that don't want listeners to fire.
+     */
+    public function execute(CreateCouponData $data, bool $quiet = false): Coupon
     {
         $coupon = $this->newModelInstance([
             'type' => $data->type,
@@ -22,7 +26,9 @@ final class CreateCouponAction
 
         $coupon->save();
 
-        CouponCreated::dispatch($coupon);
+        if (! $quiet) {
+            CouponCreated::dispatch($coupon);
+        }
 
         return $coupon;
     }

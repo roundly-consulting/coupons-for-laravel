@@ -2,7 +2,10 @@
 
 declare(strict_types=1);
 
+use Illuminate\Support\Facades\Event;
+use RoundlyConsulting\Coupons\DataTransferObjects\CreateCouponData;
 use RoundlyConsulting\Coupons\Enums\DiscountType;
+use RoundlyConsulting\Coupons\Events\CouponCreated;
 use RoundlyConsulting\Coupons\Facades\Coupons;
 use RoundlyConsulting\Coupons\Models\Coupon;
 use RoundlyConsulting\Coupons\ValueObjects\Money;
@@ -26,4 +29,32 @@ it('redeems a coupon through the facade', function (): void {
     $result = Coupons::redeem('FIVE', new Money(5000, 'EUR'));
 
     expect($result->total->getAmount())->toBe(4500);
+});
+
+it('queries redeemable coupons through the facade', function (): void {
+    Coupon::factory()->active()->fixed()->create(['code' => 'GOOD']);
+    Coupon::factory()->active()->expired()->create(['code' => 'OLD']);
+
+    expect(Coupons::redeemable()->pluck('code')->all())->toBe(['GOOD']);
+});
+
+it('checks existence through the facade', function (): void {
+    Coupon::factory()->create(['code' => 'HERE']);
+
+    expect(Coupons::exists('HERE'))->toBeTrue()
+        ->and(Coupons::exists('GONE'))->toBeFalse();
+});
+
+it('revokes a coupon through the facade', function (): void {
+    Coupon::factory()->active()->fixed()->create(['code' => 'KILL']);
+
+    expect(Coupons::revoke('KILL')->isExpired())->toBeTrue();
+});
+
+it('creates quietly through the facade', function (): void {
+    Event::fake([CouponCreated::class]);
+
+    Coupons::createQuietly(new CreateCouponData(DiscountType::Fixed, 100, 'QUIET'));
+
+    Event::assertNotDispatched(CouponCreated::class);
 });
