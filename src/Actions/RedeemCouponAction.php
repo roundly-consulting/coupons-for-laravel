@@ -9,7 +9,10 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 use RoundlyConsulting\Coupons\DataTransferObjects\RedeemCouponData;
 use RoundlyConsulting\Coupons\DataTransferObjects\RedemptionResult;
+use RoundlyConsulting\Coupons\Enums\RedemptionFailureReason;
+use RoundlyConsulting\Coupons\Events\CouponExhausted;
 use RoundlyConsulting\Coupons\Events\CouponRedeemed;
+use RoundlyConsulting\Coupons\Events\CouponRedemptionFailed;
 use RoundlyConsulting\Coupons\Exceptions\CouponAlreadyRedeemed;
 use RoundlyConsulting\Coupons\Exceptions\CouponAtMaxUsage;
 use RoundlyConsulting\Coupons\Exceptions\CouponExpired;
@@ -36,7 +39,7 @@ final class RedeemCouponAction
      */
     public function execute(RedeemCouponData $data): RedemptionResult
     {
-        $couponId = $this->resolveCouponId($data->coupon);
+        $couponId = $this->resolveCouponId($data->coupon, $data->redeemer);
 
         return DB::transaction(function () use ($couponId, $data): RedemptionResult {
             $coupon = $this->newQuery()
@@ -45,7 +48,9 @@ final class RedeemCouponAction
                 ->first();
 
             if ($coupon === null) {
-                throw CouponNotFound::forCode((string) $this->describe($data->coupon));
+                $this->fail($this->describe($data->coupon), RedemptionFailureReason::NotFound, $data->redeemer);
+
+                throw CouponNotFound::forCode($this->describe($data->coupon));
             }
 
             $this->guard($coupon, $data->price, $data->redeemer);
@@ -54,11 +59,12 @@ final class RedeemCouponAction
             $total = $data->price->subtract($discount);
 
             $coupon->increment('usage');
+            $coupon->refresh();
 
             $this->recordRedemption($coupon, $discount, $data->redeemer);
 
             $result = new RedemptionResult(
-                coupon: $coupon->refresh(),
+                coupon: $coupon,
                 discount: $discount,
                 total: $total,
                 redeemer: $data->redeemer,
@@ -67,13 +73,20 @@ final class RedeemCouponAction
 
             CouponRedeemed::dispatch($coupon, $result);
 
+            // Fire exactly once: only the redemption that brings usage up to the
+            // cap matches; the next attempt is rejected before it can increment.
+            if ($coupon->max_usage > 0 && $coupon->usage === $coupon->max_usage) {
+                CouponExhausted::dispatch($coupon);
+            }
+
             return $result;
         });
     }
 
     /**
      * Delegate eligibility to the shared guard, preserving the exact exception
-     * types, messages, and precedence callers depended on before extraction.
+     * types, messages, and precedence callers depended on before extraction. On a
+     * failing reason it also dispatches CouponRedemptionFailed before throwing.
      *
      * @throws CurrencyMismatch|MinimumSpendNotMet|CouponExpired|CouponAtMaxUsage|CouponAlreadyRedeemed
      */
@@ -82,8 +95,14 @@ final class RedeemCouponAction
         $reason = $this->guard->firstFailure($coupon, $price, $redeemer);
 
         if ($reason !== null) {
+            $this->fail($coupon->code, $reason, $redeemer);
             $this->guard->throwFor($coupon, $reason, $price);
         }
+    }
+
+    private function fail(string $code, RedemptionFailureReason $reason, ?Model $redeemer): void
+    {
+        CouponRedemptionFailed::dispatch($code, $reason, $redeemer);
     }
 
     private function recordRedemption(Coupon $coupon, Money $discount, ?Model $redeemer): void
@@ -100,7 +119,7 @@ final class RedeemCouponAction
         ]);
     }
 
-    private function resolveCouponId(Coupon|string $coupon): int
+    private function resolveCouponId(Coupon|string $coupon, ?Model $redeemer): int
     {
         if ($coupon instanceof Coupon) {
             return (int) $coupon->getKey();
@@ -109,6 +128,8 @@ final class RedeemCouponAction
         $found = $this->newQuery()->where('code', $coupon)->first();
 
         if ($found === null) {
+            $this->fail($coupon, RedemptionFailureReason::NotFound, $redeemer);
+
             throw CouponNotFound::forCode($coupon);
         }
 
