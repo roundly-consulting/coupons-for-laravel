@@ -26,7 +26,9 @@ runtime dependencies.
 composer require roundly-consulting/coupons-for-laravel
 ```
 
-Publish and run the migrations:
+Publish and run the migrations. The package does **not** auto-load them — publishing copies
+both migrations (`coupons`, then `coupon_redemptions`) into your `database/migrations`, where
+you own them, so a bare `php artisan migrate` before publishing creates nothing:
 
 ```bash
 php artisan vendor:publish --tag="coupons-migrations"
@@ -415,9 +417,10 @@ coupons and never again on a later rejected attempt.
 
 ### Per-redeemer tracking migration
 
-Run the published migrations to add the `coupon_redemptions` table that powers per-redeemer
-caps. The redeemer is a nullable morph, so guest (redeemer-less) redemptions are supported;
-per-redeemer caps apply only when a redeemer is supplied.
+Publish the migrations (`vendor:publish --tag="coupons-migrations"`) and run `php artisan
+migrate` to add the `coupon_redemptions` table that powers per-redeemer caps. The redeemer is
+a nullable morph, so guest (redeemer-less) redemptions are supported; per-redeemer caps apply
+only when a redeemer is supplied.
 
 ## Integrates with
 
