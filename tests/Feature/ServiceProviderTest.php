@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Illuminate\Support\ServiceProvider;
 use RoundlyConsulting\Coupons\CouponManager;
+use RoundlyConsulting\Coupons\CouponsServiceProvider;
 use RoundlyConsulting\Coupons\Support\RedemptionGuard;
 
 it('registers all publish tags', function (string $tag): void {
@@ -15,6 +16,34 @@ it('registers all publish tags', function (string $tag): void {
     'coupons-migrations',
     'coupons-translations',
 ]);
+
+it('publishes both migrations into the host, in create-before-reference order', function (): void {
+    $paths = ServiceProvider::pathsToPublish(CouponsServiceProvider::class, 'coupons-migrations');
+
+    $sources = array_keys($paths);
+    $targets = array_values($paths);
+
+    expect($sources)->toHaveCount(2)
+        ->and(basename((string) $sources[0]))->toBe('2024_01_01_000000_create_coupons_table.php')
+        ->and(basename((string) $sources[1]))->toBe('2024_01_01_000001_create_coupon_redemptions_table.php');
+
+    // Published under a fresh timestamp into the host's migrations directory, and the
+    // coupons table still lands before the redemptions table that references it.
+    expect($targets[0])->toStartWith(database_path('migrations'))
+        ->and($targets[1])->toStartWith(database_path('migrations'))
+        ->and(basename((string) $targets[0]))->toEndWith('_create_coupons_table.php')
+        ->and(basename((string) $targets[1]))->toEndWith('_create_coupon_redemptions_table.php')
+        ->and(basename((string) $targets[0]))->toBeLessThan(basename((string) $targets[1]));
+});
+
+it('never auto-loads its migrations — the host must publish them', function (): void {
+    $registered = array_map(
+        static fn (string $path): string => realpath($path) ?: $path,
+        app('migrator')->paths(),
+    );
+
+    expect($registered)->not->toContain(realpath(__DIR__.'/../../database/migrations'));
+});
 
 it('loads the package translations', function (): void {
     expect(__('coupons::messages.expired'))->not->toBe('coupons::messages.expired');
