@@ -8,6 +8,7 @@ use Illuminate\Support\Str;
 use RoundlyConsulting\Coupons\DataTransferObjects\CreateCouponData;
 use RoundlyConsulting\Coupons\Events\CouponCreated;
 use RoundlyConsulting\Coupons\Models\Coupon;
+use RoundlyConsulting\Coupons\Support\CouponModel;
 
 final class CreateCouponAction
 {
@@ -47,8 +48,7 @@ final class CreateCouponAction
      */
     private function newModelInstance(array $attributes = []): Coupon
     {
-        /** @var class-string<Coupon> $model */
-        $model = config('coupons.model', Coupon::class);
+        $model = CouponModel::class();
 
         return new $model($attributes);
     }

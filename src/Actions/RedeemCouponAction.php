@@ -20,6 +20,7 @@ use RoundlyConsulting\Coupons\Exceptions\CouponNotFound;
 use RoundlyConsulting\Coupons\Exceptions\CurrencyMismatch;
 use RoundlyConsulting\Coupons\Exceptions\MinimumSpendNotMet;
 use RoundlyConsulting\Coupons\Models\Coupon;
+use RoundlyConsulting\Coupons\Support\CouponModel;
 use RoundlyConsulting\Coupons\Support\RedemptionGuard;
 use RoundlyConsulting\Coupons\ValueObjects\Money;
 
@@ -146,9 +147,6 @@ final class RedeemCouponAction
      */
     private function newQuery(): Builder
     {
-        /** @var class-string<Coupon> $model */
-        $model = config('coupons.model', Coupon::class);
-
-        return $model::query();
+        return CouponModel::class()::query();
     }
 }

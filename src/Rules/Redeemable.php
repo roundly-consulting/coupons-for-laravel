@@ -9,6 +9,7 @@ use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Database\Eloquent\Model;
 use RoundlyConsulting\Coupons\Enums\RedemptionFailureReason;
 use RoundlyConsulting\Coupons\Models\Coupon;
+use RoundlyConsulting\Coupons\Support\CouponModel;
 use RoundlyConsulting\Coupons\Support\RedemptionGuard;
 use RoundlyConsulting\Coupons\ValueObjects\Money;
 
@@ -60,9 +61,6 @@ final class Redeemable implements ValidationRule
             return null;
         }
 
-        /** @var class-string<Coupon> $model */
-        $model = config('coupons.model', Coupon::class);
-
-        return $model::query()->where('code', $code)->first();
+        return CouponModel::class()::query()->where('code', $code)->first();
     }
 }

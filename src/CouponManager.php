@@ -16,6 +16,7 @@ use RoundlyConsulting\Coupons\Events\CouponRevoked;
 use RoundlyConsulting\Coupons\Exceptions\CouponNotFound;
 use RoundlyConsulting\Coupons\Facades\Coupons;
 use RoundlyConsulting\Coupons\Models\Coupon;
+use RoundlyConsulting\Coupons\Support\CouponModel;
 use RoundlyConsulting\Coupons\Testing\FakeCouponManager;
 use RoundlyConsulting\Coupons\ValueObjects\Money;
 
@@ -136,9 +137,6 @@ class CouponManager
      */
     private function newQuery(): Builder
     {
-        /** @var class-string<Coupon> $model */
-        $model = config('coupons.model', Coupon::class);
-
-        return $model::query();
+        return CouponModel::class()::query();
     }
 }

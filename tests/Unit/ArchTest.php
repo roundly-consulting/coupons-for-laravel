@@ -19,6 +19,7 @@ arch('src uses only allowed namespaces')
     ->toOnlyUse([
         'RoundlyConsulting\Coupons',
         'RoundlyConsulting\Coupons\Database\Factories',
+        'RoundlyConsulting\PackageToolkit',
         'Illuminate',
         'Carbon',
         'Closure',
@@ -27,9 +28,8 @@ arch('src uses only allowed namespaces')
         'Stringable',
         // native/framework helpers used unqualified
         'app',
+        'class_basename',
         'config',
-        'config_path',
-        'database_path',
         'now',
         'trans',
         'dispatch',

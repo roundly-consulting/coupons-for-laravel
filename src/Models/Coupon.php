@@ -38,8 +38,11 @@ use RoundlyConsulting\Coupons\ValueObjects\Money;
  * @property ?CarbonInterface $created_at
  * @property ?CarbonInterface $updated_at
  * @property ?CarbonInterface $deleted_at
+ *
+ * Not final: `coupons.model` documents swapping in a host subclass of this
+ * model, which `final` would make impossible.
  */
-final class Coupon extends Model
+class Coupon extends Model
 {
     /** @use HasFactory<CouponFactory> */
     use HasFactory;
