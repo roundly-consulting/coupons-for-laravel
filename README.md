@@ -419,6 +419,23 @@ Run the published migrations to add the `coupon_redemptions` table that powers p
 caps. The redeemer is a nullable morph, so guest (redeemer-less) redemptions are supported;
 per-redeemer caps apply only when a redeemer is supplied.
 
+## Integrates with
+
+This package hard-requires one lower-tier roundly package (wired automatically):
+
+- **[package-toolkit-for-laravel](https://github.com/roundly-consulting/package-toolkit-for-laravel)**
+  — the service-provider builder (config, migrations, translations, commands and publish tags)
+  and the validated `coupons.model` resolver, which checks that a swapped-in model really is a
+  coupon model before the package queries through it.
+
+The package reports its configuration to Laravel's `about` command. The generated-code alphabet
+is reported by size only — printing it would hand a brute-forcer the exact key space coupon codes
+are drawn from:
+
+```bash
+php artisan about --only=coupons
+```
+
 ## Testing
 
 ```bash

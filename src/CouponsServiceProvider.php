@@ -4,43 +4,64 @@ declare(strict_types=1);
 
 namespace RoundlyConsulting\Coupons;
 
-use Illuminate\Support\ServiceProvider;
 use RoundlyConsulting\Coupons\Commands\ExpireCouponsCommand;
 use RoundlyConsulting\Coupons\Commands\PruneCouponsCommand;
+use RoundlyConsulting\Coupons\Support\CouponModel;
 use RoundlyConsulting\Coupons\Support\RedemptionGuard;
+use RoundlyConsulting\PackageToolkit\Package;
+use RoundlyConsulting\PackageToolkit\PackageServiceProvider;
 
-final class CouponsServiceProvider extends ServiceProvider
+final class CouponsServiceProvider extends PackageServiceProvider
 {
+    public function configurePackage(Package $package): void
+    {
+        $package
+            ->name('coupons')
+            ->hasConfigFile()
+            ->hasMigrations()
+            ->hasTranslations()
+            ->hasCommands([
+                ExpireCouponsCommand::class,
+                PruneCouponsCommand::class,
+            ])
+            ->contributesToAbout(static fn (): array => [
+                'Model' => class_basename(CouponModel::class()),
+                'Default currency' => self::currency(),
+                'Redeemer tracking' => config('coupons.redeemer.track', true) === true ? 'ON' : 'OFF',
+                // The alphabet is reported by size only: printing it would hand a
+                // brute-forcer the exact key space generated codes are drawn from.
+                'Generated codes' => self::codeFormat(),
+                'Route key' => self::routeKey(),
+            ]);
+    }
+
     public function register(): void
     {
-        $this->mergeConfigFrom(__DIR__.'/../config/coupons.php', 'coupons');
+        parent::register();
 
         $this->app->singleton(RedemptionGuard::class);
         $this->app->singleton(CouponManager::class);
     }
 
-    public function boot(): void
+    private static function currency(): string
     {
-        $this->loadMigrationsFrom(__DIR__.'/../database/migrations');
-        $this->loadTranslationsFrom(__DIR__.'/../resources/lang', 'coupons');
+        $currency = config('coupons.default_currency', 'USD');
 
-        if ($this->app->runningInConsole()) {
-            $this->commands([
-                ExpireCouponsCommand::class,
-                PruneCouponsCommand::class,
-            ]);
+        return is_string($currency) && $currency !== '' ? $currency : 'USD';
+    }
 
-            $this->publishes([
-                __DIR__.'/../config/coupons.php' => config_path('coupons.php'),
-            ], 'coupons-config');
+    private static function codeFormat(): string
+    {
+        $charset = config('coupons.code.charset', '');
+        $length = (int) config('coupons.code.length', 6);
 
-            $this->publishes([
-                __DIR__.'/../database/migrations' => database_path('migrations'),
-            ], 'coupons-migrations');
+        return $length.' chars from a '.mb_strlen(is_string($charset) ? $charset : '').'-symbol alphabet';
+    }
 
-            $this->publishes([
-                __DIR__.'/../resources/lang' => $this->app->langPath('vendor/coupons'),
-            ], 'coupons-translations');
-        }
+    private static function routeKey(): string
+    {
+        $key = config('coupons.route_key', 'code');
+
+        return is_string($key) && $key !== '' ? $key : 'code';
     }
 }
