@@ -8,7 +8,6 @@ use RoundlyConsulting\Coupons\Actions\RedeemCouponAction;
 use RoundlyConsulting\Coupons\DataTransferObjects\RedeemCouponData;
 use RoundlyConsulting\Coupons\Exceptions\CouponAtMaxUsage;
 use RoundlyConsulting\Coupons\Models\Coupon;
-use RoundlyConsulting\Coupons\Tests\Fixtures\LockRecordingCoupon;
 use RoundlyConsulting\Coupons\ValueObjects\Money;
 
 /**
@@ -25,20 +24,11 @@ function redeemCode(string $code): void
     );
 }
 
-beforeEach(function (): void {
-    LockRecordingCoupon::$lockedAtDepth = [];
-});
-
-it('guards and increments inside one transaction against a row locked for update', function (): void {
-    config()->set('coupons.model', LockRecordingCoupon::class);
-    Coupon::factory()->fixed(500)->active()->create(['code' => 'LOCKED', 'max_usage' => 1]);
-
-    redeemCode('LOCKED');
-
-    // Depth 1 = the lock is taken inside the redemption transaction, so a second
-    // redeemer blocks on the row until the first has committed its increment.
-    expect(LockRecordingCoupon::$lockedAtDepth)->toBe([1]);
-});
+// The mutual-exclusion half — that the guard and the increment run against a row read FOR
+// UPDATE at transaction depth 1 — is pinned in LockedRedemptionShapeTest. It moved there
+// with the hand-rolled LockRecordingCoupon/LockRecordingBuilder deleted in favour of the
+// testing package's variant-B recorder, which pins the locked SQL itself and not merely
+// that a lock was asked for. Credits proved that distinction is the whole bug.
 
 it('increments usage with a relative write, not a stale read-modify-write', function (): void {
     Coupon::factory()->fixed(500)->active()->create(['code' => 'RELATIVE', 'max_usage' => 0]);
