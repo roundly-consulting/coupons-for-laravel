@@ -25,14 +25,13 @@ ArchPresets::strictTypes('RoundlyConsulting\Coupons');
  *  - CouponManager — the package's own FakeCouponManager extends it, which is how
  *    `Coupons::fake()` works. `final` here would break a feature this package ships.
  */
-ArchPresets::finalByDefault('RoundlyConsulting\Coupons')
-    ->ignoring([
-        Coupon::class,
-        CouponRedemption::class,
-        CouponException::class,
-        CouponNotRedeemable::class,
-        CouponManager::class,
-    ]);
+ArchPresets::finalByDefault('RoundlyConsulting\Coupons', [
+    Coupon::class,
+    CouponRedemption::class,
+    CouponException::class,
+    CouponNotRedeemable::class,
+    CouponManager::class,
+]);
 
 /**
  * The counter-weight to the rule above, and the fleet's 7×-shipped fatal: `final` on a
