@@ -43,31 +43,27 @@ it('publishes its migrations timestamp-injected into the host', function (): voi
 });
 
 /**
- * R — the real-engine proof. Coupons' DDL had never met a real engine before this row: the
- * suite ran on SQLite for the package's whole life. `migrations: 2` pins the count, and the
- * expectation additionally fails a set that "applies cleanly" while creating no tables — an
- * empty `up()` otherwise passes and proves nothing.
- */
-it('applies its migrations on postgres', function () use ($migrations): void {
-    expect($migrations)->toApplyOnConnection('pgsql', migrations: 2);
-})->skip(fn (): bool => ! test()->connectionAvailable('pgsql'), 'no postgres connection available');
-
-/**
- * The negative control. A green FK test proves nothing until you have watched the engine
- * *reject* the broken order (forms #28) — on SQLite this assertion fails loudly by design,
- * because SQLite does not enforce the constraint and would accept the reordered set.
+ * R (`toApplyOnConnection` + `toRejectBrokenOrderOnConnection`) is deliberately NOT adopted
+ * yet, and this is a HOLD rather than a judgement about coupons.
  *
- * Adoptable here precisely because the structural facts allow it: reversing two files puts
- * `coupon_redemptions` first, and its FK to a not-yet-existing `coupons` is something
- * Postgres genuinely refuses. Credits could adopt only the positive half (one file, no
- * edges — nothing to refuse).
+ * `DriverMatrix::configure()` currently builds `connections.testing` and `connections.pgsql`
+ * from the same `connectionConfig('pgsql')`, so on the pgsql leg they are one physical
+ * database reached by two PDO sessions. `MigrationRunner::runFiles()` drops all tables on
+ * entry and again in `finally`, which means an R assertion tears the schema out from under
+ * the live suite mid-run. With `executionOrder="random"` that is seed-dependent, so a green
+ * run proves nothing.
+ *
+ * Measured on this row, R adopted, 5 consecutive local pgsql runs:
+ *   239 passed / 21 FAILED / 239 passed / 239 passed / 15 FAILED.
+ *
+ * Both halves WERE written and proven to bite before being held back (a wrong `migrations:`
+ * count -> red; dropping the FK edge -> the negative control fails loudly, "the engine
+ * accepted the broken order"). Coupons is one of the few rows where the negative control
+ * genuinely fits — 2 files and a real FK edge mean the reversed order is something Postgres
+ * actually refuses — so this is worth restoring once the base case gives R its own database.
+ *
+ * The structural pin above (M) needs no engine: it parses the migration source, so it stays.
  */
-it('rejects a redemptions-before-coupons order on postgres', function () use ($migrations): void {
-    expect($migrations)->toRejectBrokenOrderOnConnection(
-        fn (array $files): array => array_reverse($files),
-        'pgsql',
-    );
-})->skip(fn (): bool => ! test()->connectionAvailable('pgsql'), 'no postgres connection available');
 
 /**
  * The driver-truth pin: the env-declared driver against what the connection itself answers.
