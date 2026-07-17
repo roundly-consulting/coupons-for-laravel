@@ -8,11 +8,14 @@ use RoundlyConsulting\Coupons\Commands\ExpireCouponsCommand;
 use RoundlyConsulting\Coupons\Commands\PruneCouponsCommand;
 use RoundlyConsulting\Coupons\Support\CouponModel;
 use RoundlyConsulting\Coupons\Support\RedemptionGuard;
+use RoundlyConsulting\PackageToolkit\Concerns\RegistersBlueprintMacros;
 use RoundlyConsulting\PackageToolkit\Package;
 use RoundlyConsulting\PackageToolkit\PackageServiceProvider;
 
 final class CouponsServiceProvider extends PackageServiceProvider
 {
+    use RegistersBlueprintMacros;
+
     public function configurePackage(Package $package): void
     {
         $package
@@ -41,6 +44,15 @@ final class CouponsServiceProvider extends PackageServiceProvider
 
         $this->app->singleton(RedemptionGuard::class);
         $this->app->singleton(CouponManager::class);
+    }
+
+    public function boot(): void
+    {
+        parent::boot();
+
+        // The migration's key-type-aware morph column is a macro, so it must exist
+        // before a host runs `php artisan migrate`.
+        $this->registerBlueprintMacros();
     }
 
     private static function currency(): string

@@ -20,6 +20,22 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Key Type
+    |--------------------------------------------------------------------------
+    |
+    | The key type used for the polymorphic redeemer column on coupon redemptions.
+    | Use "uuid" or "ulid" when the models that redeem coupons use UUID/ULID primary
+    | keys, otherwise leave it as "bigint". Your redeemer models must share one key
+    | type; set this to match them. Any unrecognized value falls back to "bigint".
+    |
+    | Supported: "bigint", "uuid", "ulid"
+    |
+    */
+
+    'key_type' => env('COUPONS_KEY_TYPE', 'bigint'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Default Currency
     |--------------------------------------------------------------------------
     |

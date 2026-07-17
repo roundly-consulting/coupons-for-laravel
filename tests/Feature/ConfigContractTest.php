@@ -16,11 +16,12 @@ declare(strict_types=1);
  *    codes it never asked for and no error.
  */
 it('ships exactly the config keys it reads', function (): void {
-    expect(__DIR__.'/../../config/coupons.php')->toSatisfyConfigContract(__DIR__.'/../../src', [
+    expect(__DIR__.'/../../config/coupons.php')->toSatisfyConfigContract([__DIR__.'/../../src', __DIR__.'/../../database'], [
         // `coupons.model` is read through the toolkit's `ModelResolver::for('coupons.model',
-        // …)` seam rather than a `config()` call. It is a real read — it drives the entire
-        // model swap — but it is not a `config(` token, so the prefix is what makes it
-        // visible to the scraper.
+        // …)` seam, and `coupons.key_type` through `KeyType::fromConfig('coupons.key_type')`
+        // in the migration (hence `database` in the scanned dirs). Both are real reads — the
+        // model key drives the swap, the key type decides the shipped morph column type — but
+        // neither is a `config(` token, so the prefix is what makes them visible to the scraper.
         'extraReadPrefixes' => ['coupons.'],
 
         // Deliberately NO `excludeFromReverse` for the provider. The testing README's own
