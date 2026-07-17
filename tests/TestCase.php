@@ -4,34 +4,44 @@ declare(strict_types=1);
 
 namespace RoundlyConsulting\Coupons\Tests;
 
-use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\Schema;
-use Orchestra\Testbench\TestCase as Orchestra;
+use Illuminate\Support\ServiceProvider;
 use RoundlyConsulting\Coupons\CouponsServiceProvider;
+use RoundlyConsulting\Testing\PackageTestCase;
 
-abstract class TestCase extends Orchestra
+abstract class TestCase extends PackageTestCase
 {
-    /** @return array<int, class-string> */
-    protected function getPackageProviders($app): array
+    /**
+     * Every provider coupons hard-requires, in registration order. A host auto-discovers
+     * these; the suite must list them or the test environment is a fiction.
+     *
+     * @return list<class-string<ServiceProvider>>
+     */
+    protected function packageProviders(): array
+    {
+        return [CouponsServiceProvider::class];
+    }
+
+    /**
+     * The two coupon migrations, named by provider class (never by filename), plus the
+     * host-owned `customers` fixture table the redeemer lives in.
+     *
+     * @return list<class-string<ServiceProvider>|string>
+     */
+    protected function migrationSources(): array
     {
         return [
             CouponsServiceProvider::class,
+            __DIR__.'/database/migrations',
         ];
     }
 
-    protected function defineEnvironment($app): void
+    /**
+     * @return array<string, mixed>
+     */
+    protected function configBeforeBoot(): array
     {
-        $app['config']->set('app.key', 'base64:'.base64_encode(random_bytes(32)));
-        $app['config']->set('database.connections.testing.foreign_key_constraints', true);
-    }
-
-    protected function defineDatabaseMigrations(): void
-    {
-        $this->loadMigrationsFrom(__DIR__.'/../database/migrations');
-
-        Schema::create('customers', function (Blueprint $table): void {
-            $table->id();
-            $table->string('name')->nullable();
-        });
+        return [
+            'app.key' => 'base64:'.base64_encode(random_bytes(32)),
+        ];
     }
 }
