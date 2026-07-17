@@ -24,7 +24,7 @@ return new class extends Migration
             $table->unsignedInteger('max_discount')->nullable();
             $table->timestamp('activated_at')->nullable();
             $table->timestamp('expires_at')->nullable();
-            $table->json('meta')->nullable();
+            $table->jsonb('meta')->nullable();
             $table->timestamps();
             $table->softDeletes();
         });

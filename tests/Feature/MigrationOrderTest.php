@@ -77,9 +77,14 @@ it('runs on the driver the environment declared', function (): void {
 });
 
 /**
- * The `json` meta column and the soft-delete timestamps are what the drivers genuinely
+ * The `jsonb` meta column and the soft-delete timestamps are what the drivers genuinely
  * render differently. Pinning a round-trip on whatever engine the leg configured proves the
  * columns are usable rather than merely creatable.
+ *
+ * Asserted key-by-key, not against a whole literal array: Postgres `jsonb` sorts object keys
+ * by (length, bytes), so `toBe(['campaign' => ..., 'tier' => ...])` would compare insertion
+ * order the engine never promised to keep. The value types still matter — `tier` must come
+ * back the int 2, not "2" — so each key keeps a strict assertion.
  */
 it('round-trips the coupon columns on the configured engine', function (): void {
     $coupon = Coupon::factory()->fixed(500)->active()->create([
@@ -91,7 +96,8 @@ it('round-trips the coupon columns on the configured engine', function (): void 
 
     $fresh = $coupon->fresh();
 
-    expect($fresh?->meta?->toArray())->toBe(['campaign' => 'launch', 'tier' => 2])
+    expect($fresh?->meta?->get('campaign'))->toBe('launch')
+        ->and($fresh?->meta?->get('tier'))->toBe(2)
         ->and($fresh?->value)->toBe(500)
         ->and($fresh?->currency)->toBe('EUR')
         ->and($fresh?->minimum_spend)->toBe(1000);
