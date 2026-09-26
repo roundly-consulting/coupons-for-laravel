@@ -4,21 +4,22 @@ declare(strict_types=1);
 
 namespace RoundlyConsulting\Coupons\Enums;
 
-use RoundlyConsulting\Coupons\ValueObjects\Money;
+use RoundlyConsulting\Money\Currency;
+use RoundlyConsulting\Money\Discounts\Discount;
+use RoundlyConsulting\Money\Money;
+use RoundlyConsulting\Money\Percentage;
 
 /**
- * How a coupon's value is applied to a price.
- *
- * Reimplemented natively in-package (replaces the discount type + applicators
- * that previously came from an external money library) so the runtime stays
- * Laravel-only.
+ * How a coupon's value is applied to a price. The discount math itself belongs to
+ * money-for-laravel: {@see self::toDiscount()} turns a coupon's stored value into a money
+ * {@see Discount}.
  */
 enum DiscountType: string
 {
-    /** Subtract a fixed amount, expressed in the price's minor units. */
+    /** Subtract a fixed amount, stored as minor units of the coupon's (required) currency. */
     case Fixed = 'fixed';
 
-    /** Subtract a percentage of the price, where the value is whole percent (e.g. 25 = 25%). */
+    /** Subtract a percentage of the price, stored in basis points (2500 = 25 %, 1250 = 12.5 %). */
     case Percentage = 'percentage';
 
     /**
@@ -29,37 +30,20 @@ enum DiscountType: string
     case FreeShipping = 'free_shipping';
 
     /**
-     * Apply this discount type to the given price, returning the new total.
+     * The money Discount for a stored coupon value.
      *
-     * @param  Money  $price  The price to discount.
-     * @param  int  $value  The coupon value: minor units for Fixed, whole percent for Percentage.
-     * @param  int|null  $maxDiscount  Optional cap (minor units) on the discount amount.
+     * @param  int  $value  Fixed: minor units of `$currency`; Percentage: basis points; FreeShipping: ignored.
+     * @param  Money|null  $cap  The most the discount may remove.
      */
-    public function apply(Money $price, int $value, ?int $maxDiscount = null): Money
-    {
-        return $price->subtract($this->discount($price, $value, $maxDiscount));
-    }
-
-    /**
-     * The amount saved off the price (in minor units), respecting an optional cap.
-     *
-     * @param  Money  $price  The price the discount applies to.
-     * @param  int  $value  The coupon value: minor units for Fixed, whole percent for Percentage.
-     * @param  int|null  $maxDiscount  Optional cap (minor units) on the discount amount.
-     */
-    public function discount(Money $price, int $value, ?int $maxDiscount = null): Money
+    public function toDiscount(int $value, Currency $currency, ?Money $cap = null): Discount
     {
         $discount = match ($this) {
-            self::Fixed => new Money($value, $price->getCurrency()),
-            self::Percentage => $price->multiply($value / 100),
-            self::FreeShipping => Money::zero($price->getCurrency()),
+            self::Fixed => Discount::fixed(Money::ofMinor($value, $currency)),
+            self::Percentage => Discount::percentage(Percentage::fromBasisPoints($value)),
+            self::FreeShipping => Discount::freeShipping(),
         };
 
-        if ($maxDiscount !== null && $discount->getAmount() > $maxDiscount) {
-            return new Money($maxDiscount, $price->getCurrency());
-        }
-
-        return $discount;
+        return $cap === null ? $discount : $discount->cappedAt($cap);
     }
 
     /**

@@ -4,12 +4,12 @@ declare(strict_types=1);
 
 use RoundlyConsulting\Coupons\DataTransferObjects\RedemptionResult;
 use RoundlyConsulting\Coupons\Models\Coupon;
-use RoundlyConsulting\Coupons\ValueObjects\Money;
+use RoundlyConsulting\Money\Money;
 
 it('carries the redemption outcome', function (): void {
     $coupon = Coupon::factory()->make();
-    $discount = new Money(1000, 'EUR');
-    $total = new Money(4000, 'EUR');
+    $discount = Money::ofMinor(1000, 'EUR');
+    $total = Money::ofMinor(4000, 'EUR');
 
     $result = new RedemptionResult(
         coupon: $coupon,

@@ -5,12 +5,11 @@ declare(strict_types=1);
 use RoundlyConsulting\Coupons\Actions\RedeemCouponAction;
 use RoundlyConsulting\Coupons\DataTransferObjects\CreateCouponData;
 use RoundlyConsulting\Coupons\DataTransferObjects\RedeemCouponData;
-use RoundlyConsulting\Coupons\Enums\DiscountType;
 use RoundlyConsulting\Coupons\Exceptions\CouponAtMaxUsage;
 use RoundlyConsulting\Coupons\Facades\Coupons;
 use RoundlyConsulting\Coupons\Tests\Fixtures\CustomCoupon;
 use RoundlyConsulting\Coupons\Tests\Fixtures\SwappedCouponTestCase;
-use RoundlyConsulting\Coupons\ValueObjects\Money;
+use RoundlyConsulting\Money\Money;
 
 /**
  * The model-swap proof (S) for the `coupons.model` seam, driven through the REAL flows.
@@ -37,9 +36,8 @@ use RoundlyConsulting\Coupons\ValueObjects\Money;
  */
 function createActiveCoupon(string $code, int $maxUsage = 0): CustomCoupon
 {
-    $coupon = Coupons::create(new CreateCouponData(
-        type: DiscountType::Fixed,
-        value: 500,
+    $coupon = Coupons::create(CreateCouponData::fixed(
+        Money::ofMinor(500, 'USD'),
         code: $code,
         maxUsage: $maxUsage,
     ));
@@ -57,7 +55,7 @@ it('honours a host coupon model through every redemption flow', function (): voi
         // Redemption reads the row back under the lock, refreshes it, and returns it on
         // the result — every one of those hydrations must land on the host's model.
         $result = app(RedeemCouponAction::class)->execute(
-            new RedeemCouponData(coupon: 'SWAPPED', price: new Money(5000, 'USD'), redeemer: null),
+            new RedeemCouponData(coupon: 'SWAPPED', price: Money::ofMinor(5000, 'USD'), redeemer: null),
         );
 
         return [
@@ -79,14 +77,14 @@ it('enforces the usage cap through the swapped model', function (): void {
     createActiveCoupon('CAPSWAP', maxUsage: 1);
 
     $result = app(RedeemCouponAction::class)->execute(
-        new RedeemCouponData(coupon: 'CAPSWAP', price: new Money(5000, 'USD'), redeemer: null),
+        new RedeemCouponData(coupon: 'CAPSWAP', price: Money::ofMinor(5000, 'USD'), redeemer: null),
     );
 
     expect($result->coupon)->toBeInstanceOf(CustomCoupon::class)
         ->and($result->coupon->usage)->toBe(1)
         // The cap is enforced against the host's model, and the second attempt is refused.
         ->and(fn (): mixed => app(RedeemCouponAction::class)->execute(
-            new RedeemCouponData(coupon: 'CAPSWAP', price: new Money(5000, 'USD'), redeemer: null),
+            new RedeemCouponData(coupon: 'CAPSWAP', price: Money::ofMinor(5000, 'USD'), redeemer: null),
         ))
         ->toThrow(CouponAtMaxUsage::class)
         ->and(CustomCoupon::query()->where('code', 'CAPSWAP')->value('usage'))->toBe(1);

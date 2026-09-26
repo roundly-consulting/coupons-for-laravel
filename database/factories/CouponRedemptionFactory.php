@@ -7,6 +7,7 @@ namespace RoundlyConsulting\Coupons\Database\Factories;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use RoundlyConsulting\Coupons\Models\Coupon;
 use RoundlyConsulting\Coupons\Models\CouponRedemption;
+use RoundlyConsulting\Money\Money;
 
 /** @extends Factory<CouponRedemption> */
 final class CouponRedemptionFactory extends Factory
@@ -20,8 +21,9 @@ final class CouponRedemptionFactory extends Factory
             'coupon_id' => Coupon::factory(),
             'redeemer_type' => null,
             'redeemer_id' => null,
-            'amount_discounted' => $this->faker->numberBetween(100, 1000),
+            // `currency` first: the cast refuses to re-denominate an already-set column.
             'currency' => 'EUR',
+            'amount_discounted' => Money::ofMinor($this->faker->numberBetween(100, 1000), 'EUR'),
         ];
     }
 }

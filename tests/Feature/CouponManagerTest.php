@@ -10,14 +10,14 @@ use RoundlyConsulting\Coupons\Events\CouponCreated;
 use RoundlyConsulting\Coupons\Events\CouponRevoked;
 use RoundlyConsulting\Coupons\Exceptions\CouponNotFound;
 use RoundlyConsulting\Coupons\Models\Coupon;
-use RoundlyConsulting\Coupons\ValueObjects\Money;
+use RoundlyConsulting\Money\Money;
 
 beforeEach(function (): void {
     $this->manager = app(CouponManager::class);
 });
 
 it('generates and persists a coupon', function (): void {
-    $coupon = $this->manager->generate(DiscountType::Percentage, 20, 'SAVE20', 100);
+    $coupon = $this->manager->generate(DiscountType::Percentage, 2000, 'SAVE20', 100);
 
     expect($coupon)->toBeInstanceOf(Coupon::class)
         ->exists->toBeTrue()
@@ -26,14 +26,14 @@ it('generates and persists a coupon', function (): void {
 });
 
 it('generates a coupon with an auto code', function (): void {
-    $coupon = $this->manager->generate(DiscountType::Fixed, 500);
+    $coupon = $this->manager->generate(DiscountType::Fixed, 500, currency: 'EUR');
 
     expect($coupon->code)->not->toBeEmpty()
         ->and($coupon->exists)->toBeTrue();
 });
 
 it('creates a coupon from a dto', function (): void {
-    $coupon = $this->manager->create(new CreateCouponData(DiscountType::Fixed, 250, 'TEN'));
+    $coupon = $this->manager->create(CreateCouponData::fixed(Money::ofMinor(250, 'EUR'), 'TEN'));
 
     expect($coupon->code)->toBe('TEN');
 });
@@ -56,11 +56,11 @@ it('throws when finding or failing an unknown code', function (): void {
 })->throws(CouponNotFound::class);
 
 it('redeems a coupon', function (): void {
-    Coupon::factory()->percentage(20)->active()->create(['code' => 'SAVE20']);
+    Coupon::factory()->percentage(2000)->active()->create(['code' => 'SAVE20']);
 
-    $result = $this->manager->redeem('SAVE20', new Money(5000, 'EUR'));
+    $result = $this->manager->redeem('SAVE20', Money::ofMinor(5000, 'EUR'));
 
-    expect($result->total->getAmount())->toBe(4000);
+    expect($result->total->minor())->toBe('4000');
 });
 
 it('is a shared singleton', function (): void {
@@ -68,7 +68,7 @@ it('is a shared singleton', function (): void {
 });
 
 it('queries only redeemable coupons', function (): void {
-    Coupon::factory()->active()->fixed()->create(['code' => 'GOOD']);
+    Coupon::factory()->active()->fixed(100, 'EUR')->create(['code' => 'GOOD']);
     Coupon::factory()->active()->expired()->create(['code' => 'OLD']);
     Coupon::factory()->active()->create(['code' => 'MAXED', 'max_usage' => 1, 'usage' => 1]);
     Coupon::factory()->create(['code' => 'INACTIVE', 'activated_at' => null]);
@@ -87,7 +87,7 @@ it('reports whether a coupon code exists', function (): void {
 
 it('revokes a coupon by expiring it without deleting', function (): void {
     Event::fake([CouponRevoked::class]);
-    Coupon::factory()->active()->fixed()->create(['code' => 'KILL']);
+    Coupon::factory()->active()->fixed(100, 'EUR')->create(['code' => 'KILL']);
 
     $coupon = $this->manager->revoke('KILL');
 
@@ -105,7 +105,7 @@ it('throws when revoking an unknown code', function (): void {
 it('creates a coupon quietly without the created event', function (): void {
     Event::fake([CouponCreated::class]);
 
-    $coupon = $this->manager->createQuietly(new CreateCouponData(DiscountType::Fixed, 100, 'QUIET'));
+    $coupon = $this->manager->createQuietly(CreateCouponData::fixed(Money::ofMinor(100, 'EUR'), 'QUIET'));
 
     expect($coupon->exists)->toBeTrue()
         ->and($coupon->code)->toBe('QUIET');

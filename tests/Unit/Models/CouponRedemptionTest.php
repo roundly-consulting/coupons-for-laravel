@@ -5,7 +5,7 @@ declare(strict_types=1);
 use RoundlyConsulting\Coupons\Models\Coupon;
 use RoundlyConsulting\Coupons\Models\CouponRedemption;
 use RoundlyConsulting\Coupons\Tests\Fixtures\Customer;
-use RoundlyConsulting\Coupons\ValueObjects\Money;
+use RoundlyConsulting\Money\Money;
 
 it('belongs to a coupon', function (): void {
     $coupon = Coupon::factory()->create();
@@ -29,13 +29,25 @@ it('morphs to a redeemer', function (): void {
 
 it('exposes the discount as money', function (): void {
     $redemption = CouponRedemption::factory()->create([
-        'amount_discounted' => 750,
-        'currency' => 'eur',
+        'currency' => 'EUR',
+        'amount_discounted' => Money::ofMinor(750, 'EUR'),
     ]);
 
-    expect($redemption->discount())->toBeInstanceOf(Money::class)
-        ->getAmount()->toBe(750)
-        ->getCurrency()->toBe('EUR');
+    $fresh = $redemption->fresh();
+
+    expect($fresh?->discount())->toBeInstanceOf(Money::class)
+        ->and($fresh?->discount()->minor())->toBe('750')
+        ->and($fresh?->discount()->currency()->code)->toBe('EUR');
+});
+
+it('writes the redemption currency from the discounted amount', function (): void {
+    $redemption = CouponRedemption::factory()->create([
+        'currency' => null,
+        'amount_discounted' => Money::ofMinor(500, 'JPY'),
+    ]);
+
+    expect($redemption->fresh()?->currency)->toBe('JPY')
+        ->and((string) $redemption->fresh()?->discount())->toBe('500 JPY');
 });
 
 it('soft deletes redemptions', function (): void {

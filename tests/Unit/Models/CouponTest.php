@@ -6,11 +6,15 @@ use Carbon\CarbonImmutable;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use RoundlyConsulting\Coupons\Enums\DiscountType;
-use RoundlyConsulting\Coupons\Exceptions\InvalidMoney;
+use RoundlyConsulting\Coupons\Exceptions\InvalidCouponDefinition;
 use RoundlyConsulting\Coupons\Models\Coupon;
 use RoundlyConsulting\Coupons\Models\CouponRedemption;
 use RoundlyConsulting\Coupons\Tests\Fixtures\Customer;
-use RoundlyConsulting\Coupons\ValueObjects\Money;
+use RoundlyConsulting\Money\Currency;
+use RoundlyConsulting\Money\Discounts\Discount;
+use RoundlyConsulting\Money\Enums\DiscountTarget;
+use RoundlyConsulting\Money\Exceptions\CurrencyMismatch;
+use RoundlyConsulting\Money\Money;
 
 it('casts type to the discount enum', function (): void {
     $coupon = Coupon::factory()->make();
@@ -139,28 +143,28 @@ it('checks whether the coupon can be applied', function (): void {
 });
 
 it('applies a fixed discount to a price', function (): void {
-    $coupon = Coupon::factory()->fixed(50)->make();
+    $coupon = Coupon::factory()->fixed(50, 'EUR')->make();
 
-    $result = $coupon->apply(new Money(1000, 'EUR'));
+    $result = $coupon->apply(Money::ofMinor(1000, 'EUR'));
 
     expect($result)->toBeInstanceOf(Money::class)
-        ->getAmount()->toBe(950)
-        ->getCurrency()->toBe('EUR');
+        ->minor()->toBe('950')
+        ->currency()->code->toBe('EUR');
 });
 
 it('applies a percentage discount to a price', function (): void {
-    $coupon = Coupon::factory()->percentage(25)->make();
+    $coupon = Coupon::factory()->percentage(2500)->make();
 
-    $result = $coupon->apply(new Money(1000, 'EUR'));
+    $result = $coupon->apply(Money::ofMinor(1000, 'EUR'));
 
-    expect($result->getAmount())->toBe(750);
+    expect($result->minor())->toBe('750');
 });
 
 it('returns the discount amount respecting the cap', function (): void {
-    $coupon = Coupon::factory()->cappedPercentage(50, 300)->make();
+    $coupon = Coupon::factory()->cappedPercentage(5000, Money::ofMinor(300, 'EUR'))->make();
 
-    expect($coupon->discountFor(new Money(1000, 'EUR'))->getAmount())->toBe(300)
-        ->and($coupon->apply(new Money(1000, 'EUR'))->getAmount())->toBe(700);
+    expect($coupon->discountFor(Money::ofMinor(1000, 'EUR'))->minor())->toBe('300')
+        ->and($coupon->apply(Money::ofMinor(1000, 'EUR'))->minor())->toBe('700');
 });
 
 it('reports a free-shipping coupon', function (): void {
@@ -168,37 +172,37 @@ it('reports a free-shipping coupon', function (): void {
 
     expect($coupon->isFreeShipping())->toBeTrue()
         ->and($coupon->appliesToShipping())->toBeTrue()
-        ->and($coupon->discountFor(new Money(1000, 'EUR'))->getAmount())->toBe(0);
+        ->and($coupon->discountFor(Money::ofMinor(1000, 'EUR'))->minor())->toBe('0');
 
     expect(Coupon::factory()->fixed()->make()->isFreeShipping())->toBeFalse();
 });
 
 it('applies to any currency when not locked', function (): void {
-    $coupon = Coupon::factory()->fixed()->make(['currency' => null]);
+    $coupon = Coupon::factory()->percentage()->make();
 
-    expect($coupon->appliesToCurrency(new Money(1000, 'EUR')))->toBeTrue()
-        ->and($coupon->appliesToCurrency(new Money(1000, 'USD')))->toBeTrue();
+    expect($coupon->appliesToCurrency(Money::ofMinor(1000, 'EUR')))->toBeTrue()
+        ->and($coupon->appliesToCurrency(Money::ofMinor(1000, 'USD')))->toBeTrue();
 });
 
 it('only applies to its locked currency', function (): void {
     $coupon = Coupon::factory()->fixed()->forCurrency('EUR')->make();
 
-    expect($coupon->appliesToCurrency(new Money(1000, 'EUR')))->toBeTrue()
-        ->and($coupon->appliesToCurrency(new Money(1000, 'USD')))->toBeFalse();
+    expect($coupon->appliesToCurrency(Money::ofMinor(1000, 'EUR')))->toBeTrue()
+        ->and($coupon->appliesToCurrency(Money::ofMinor(1000, 'USD')))->toBeFalse();
 });
 
 it('throws when applied to a mismatched currency', function (): void {
-    Coupon::factory()->fixed()->forCurrency('EUR')->make()->apply(new Money(1000, 'USD'));
-})->throws(InvalidMoney::class);
+    Coupon::factory()->fixed()->forCurrency('EUR')->make()->apply(Money::ofMinor(1000, 'USD'));
+})->throws(CurrencyMismatch::class);
 
 it('checks the minimum spend', function (): void {
-    $unconstrained = Coupon::factory()->fixed()->make(['minimum_spend' => null]);
-    $constrained = Coupon::factory()->fixed()->withMinimumSpend(1000)->make();
+    $unconstrained = Coupon::factory()->fixed(100, 'EUR')->make(['minimum_spend' => null]);
+    $constrained = Coupon::factory()->fixed(100, 'EUR')->withMinimumSpend(Money::ofMinor(1000, 'EUR'))->make();
 
-    expect($unconstrained->meetsMinimumSpend(new Money(1, 'EUR')))->toBeTrue()
-        ->and($constrained->meetsMinimumSpend(new Money(999, 'EUR')))->toBeFalse()
-        ->and($constrained->meetsMinimumSpend(new Money(1000, 'EUR')))->toBeTrue()
-        ->and($constrained->meetsMinimumSpend(new Money(2000, 'EUR')))->toBeTrue();
+    expect($unconstrained->meetsMinimumSpend(Money::ofMinor(1, 'EUR')))->toBeTrue()
+        ->and($constrained->meetsMinimumSpend(Money::ofMinor(999, 'EUR')))->toBeFalse()
+        ->and($constrained->meetsMinimumSpend(Money::ofMinor(1000, 'EUR')))->toBeTrue()
+        ->and($constrained->meetsMinimumSpend(Money::ofMinor(2000, 'EUR')))->toBeTrue();
 });
 
 it('counts usage by a specific redeemer', function (): void {
@@ -292,7 +296,7 @@ it('reports whether a redeemer can redeem without throwing', function (): void {
     $clean = Coupon::factory()->active()->fixed()->create();
     $customer = Customer::query()->create(['name' => 'Ada']);
 
-    expect($clean->isRedeemableBy($customer, new Money(1000, 'USD')))->toBeTrue()
+    expect($clean->isRedeemableBy($customer, Money::ofMinor(1000, 'USD')))->toBeTrue()
         ->and($clean->isRedeemableBy())->toBeTrue();
 
     $expired = Coupon::factory()->active()->expired()->create();
@@ -302,35 +306,127 @@ it('reports whether a redeemer can redeem without throwing', function (): void {
     expect($atMax->isRedeemableBy())->toBeFalse();
 
     $locked = Coupon::factory()->active()->fixed()->forCurrency('EUR')->create();
-    expect($locked->isRedeemableBy(null, new Money(1000, 'USD')))->toBeFalse();
+    expect($locked->isRedeemableBy(null, Money::ofMinor(1000, 'USD')))->toBeFalse();
 
-    $minimum = Coupon::factory()->active()->fixed()->withMinimumSpend(2000)->create();
-    expect($minimum->isRedeemableBy(null, new Money(1000, 'USD')))->toBeFalse();
+    $minimum = Coupon::factory()->active()->fixed()->withMinimumSpend(Money::ofMinor(2000, 'USD'))->create();
+    expect($minimum->isRedeemableBy(null, Money::ofMinor(1000, 'USD')))->toBeFalse();
 
     $perRedeemer = Coupon::factory()->active()->create(['max_usage_per_redeemer' => 1]);
     $perRedeemer->redemptions()->create([
         'redeemer_type' => $customer->getMorphClass(),
         'redeemer_id' => $customer->getKey(),
-        'amount_discounted' => 100,
-        'currency' => 'USD',
+        'amount_discounted' => Money::ofMinor(100, 'USD'),
     ]);
     expect($perRedeemer->isRedeemableBy($customer))->toBeFalse();
 });
 
 it('previews a discount without throwing on a currency mismatch', function (): void {
     $fixed = Coupon::factory()->fixed(250)->make();
-    expect($fixed->previewDiscount(new Money(1000, 'USD'))->getAmount())->toBe(250);
+    expect($fixed->previewDiscount(Money::ofMinor(1000, 'USD'))->minor())->toBe('250');
 
-    $capped = Coupon::factory()->cappedPercentage(50, 300)->make();
-    expect($capped->previewDiscount(new Money(1000, 'USD'))->getAmount())->toBe(300);
+    $capped = Coupon::factory()->cappedPercentage(5000, Money::ofMinor(300, 'USD'))->make();
+    expect($capped->previewDiscount(Money::ofMinor(1000, 'USD'))->minor())->toBe('300');
 
     $freeShipping = Coupon::factory()->freeShipping()->make();
-    expect($freeShipping->previewDiscount(new Money(1000, 'USD'))->getAmount())->toBe(0);
+    expect($freeShipping->previewDiscount(Money::ofMinor(1000, 'USD'))->minor())->toBe('0');
 
     $locked = Coupon::factory()->fixed(250)->forCurrency('EUR')->make();
-    $preview = $locked->previewDiscount(new Money(1000, 'USD'));
-    expect($preview->getAmount())->toBe(0)
-        ->and($preview->getCurrency())->toBe('USD');
+    $preview = $locked->previewDiscount(Money::ofMinor(1000, 'USD'));
+    expect($preview->minor())->toBe('0')
+        ->and($preview->currency()->code)->toBe('USD');
+});
+
+it('casts the currency lock, minimum spend and cap to money types', function (): void {
+    $coupon = Coupon::factory()
+        ->cappedPercentage(1000, Money::ofMinor(500, 'EUR'))
+        ->withMinimumSpend(Money::ofMinor(2000, 'EUR'))
+        ->create();
+
+    $fresh = $coupon->fresh();
+
+    expect($fresh?->currency)->toBeInstanceOf(Currency::class)
+        ->and($fresh?->currency?->code)->toBe('EUR')
+        ->and($fresh?->minimum_spend?->equals(Money::ofMinor(2000, 'EUR')))->toBeTrue()
+        ->and($fresh?->max_discount?->equals(Money::ofMinor(500, 'EUR')))->toBeTrue();
+});
+
+it('returns string minor amounts from discountFor', function (): void {
+    $discount = Coupon::factory()->percentage(1250)->make()->discountFor(Money::ofMinor(999, 'EUR'));
+
+    // 12.5 % of 999 = 124.875 → 125 (half away from zero).
+    expect($discount->minor())->toBe('125')
+        ->and($discount->currency()->code)->toBe('EUR');
+});
+
+it('discounts a fixed amount in a zero-exponent and a three-exponent currency', function (): void {
+    $yen = Coupon::factory()->fixed(500, 'JPY')->make();
+    $dinar = Coupon::factory()->fixed(1500, 'BHD')->make();
+
+    expect($yen->apply(Money::ofMinor(1200, 'JPY'))->minor())->toBe('700')
+        ->and((string) $yen->discountFor(Money::ofMinor(1200, 'JPY')))->toBe('500 JPY')
+        ->and((string) $dinar->discountFor(Money::ofMinor(10000, 'BHD')))->toBe('1.500 BHD');
+});
+
+it('never discounts more than the price', function (): void {
+    $coupon = Coupon::factory()->fixed(5000, 'EUR')->make();
+
+    expect($coupon->discountFor(Money::ofMinor(1000, 'EUR'))->minor())->toBe('1000')
+        ->and($coupon->apply(Money::ofMinor(1000, 'EUR'))->minor())->toBe('0');
+});
+
+it('caps a percentage below and leaves it alone above the discount', function (): void {
+    $low = Coupon::factory()->cappedPercentage(5000, Money::ofMinor(100, 'EUR'))->make();
+    $high = Coupon::factory()->cappedPercentage(5000, Money::ofMinor(9000, 'EUR'))->make();
+
+    expect($low->discountFor(Money::ofMinor(1000, 'EUR'))->minor())->toBe('100')
+        ->and($high->discountFor(Money::ofMinor(1000, 'EUR'))->minor())->toBe('500');
+});
+
+it('discounts nothing for a zero-percent coupon', function (): void {
+    expect(Coupon::factory()->percentage(0)->make()->discountFor(Money::ofMinor(1000, 'EUR'))->isZero())->toBeTrue();
+});
+
+it('leaves the goods price unchanged when applying a free-shipping coupon', function (): void {
+    $price = Money::ofMinor(1000, 'EUR');
+
+    expect(Coupon::factory()->freeShipping()->make()->apply($price)->equals($price))->toBeTrue();
+});
+
+it('throws a money currency mismatch from discountFor on a locked coupon', function (): void {
+    Coupon::factory()->percentage(1000)->forCurrency('EUR')->make()->discountFor(Money::ofMinor(1000, 'USD'));
+})->throws(CurrencyMismatch::class);
+
+it('refuses a fixed coupon row that has no currency', function (): void {
+    Coupon::query()->insert([
+        'code' => 'RAWFIX',
+        'type' => DiscountType::Fixed->value,
+        'value' => 500,
+        'usage' => 0,
+        'max_usage' => 0,
+        'max_usage_per_redeemer' => 0,
+    ]);
+
+    Coupon::query()->where('code', 'RAWFIX')->firstOrFail()->discountFor(Money::ofMinor(1000, 'EUR'));
+})->throws(InvalidCouponDefinition::class, 'must be locked to a currency');
+
+it('refuses a cap in another currency than the coupon lock', function (): void {
+    $coupon = Coupon::factory()->percentage(1000)->forCurrency('EUR')->make();
+
+    $coupon->max_discount = Money::ofMinor(500, 'USD');
+})->throws(CurrencyMismatch::class);
+
+it('exposes the coupon as a labelled money discount', function (): void {
+    $fixed = Coupon::factory()->fixed(300, 'EUR')->make(['code' => 'SAVE3'])->discount(Currency::of('USD'));
+    $percent = Coupon::factory()->cappedPercentage(1250, Money::ofMinor(400, 'EUR'))->make(['code' => 'TWELVE'])->discount(Currency::of('EUR'));
+    $shipping = Coupon::factory()->freeShipping()->make(['code' => 'SHIP'])->discount(Currency::of('EUR'));
+
+    expect($fixed)->toBeInstanceOf(Discount::class)
+        ->and($fixed->label())->toBe('SAVE3')
+        ->and($fixed->fixedAmount()?->equals(Money::ofMinor(300, 'EUR')))->toBeTrue()
+        ->and($percent->percent()?->value())->toBe('12.5')
+        ->and($percent->cap()?->equals(Money::ofMinor(400, 'EUR')))->toBeTrue()
+        ->and($shipping->target())->toBe(DiscountTarget::Shipping)
+        ->and((new Coupon(['type' => DiscountType::Percentage, 'value' => 1000]))->discount(Currency::of('EUR'))->label())->toBeNull();
 });
 
 it('soft deletes coupons', function (): void {

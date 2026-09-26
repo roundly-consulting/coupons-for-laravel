@@ -17,8 +17,7 @@ return new class extends Migration
             $table->id();
             $table->foreignId('coupon_id')->constrained('coupons')->cascadeOnDelete();
             $table->morphKey('redeemer', $keyType, nullable: true);
-            $table->unsignedInteger('amount_discounted');
-            $table->string('currency', 3);
+            $table->money('amount_discounted', currency: 'currency');
             $table->timestamps();
             $table->softDeletes();
         });

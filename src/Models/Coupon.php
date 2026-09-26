@@ -17,9 +17,14 @@ use RoundlyConsulting\Coupons\Database\Factories\CouponFactory;
 use RoundlyConsulting\Coupons\DataTransferObjects\RedeemCouponData;
 use RoundlyConsulting\Coupons\DataTransferObjects\RedemptionResult;
 use RoundlyConsulting\Coupons\Enums\DiscountType;
-use RoundlyConsulting\Coupons\Exceptions\InvalidMoney;
+use RoundlyConsulting\Coupons\Exceptions\InvalidCouponDefinition;
 use RoundlyConsulting\Coupons\Support\RedemptionGuard;
-use RoundlyConsulting\Coupons\ValueObjects\Money;
+use RoundlyConsulting\Money\Casts\AsCurrency;
+use RoundlyConsulting\Money\Casts\AsMoney;
+use RoundlyConsulting\Money\Currency;
+use RoundlyConsulting\Money\Discounts\Discount;
+use RoundlyConsulting\Money\Exceptions\CurrencyMismatch;
+use RoundlyConsulting\Money\Money;
 
 /**
  * @property int $id
@@ -29,9 +34,9 @@ use RoundlyConsulting\Coupons\ValueObjects\Money;
  * @property int $usage
  * @property int $max_usage
  * @property int $max_usage_per_redeemer
- * @property ?string $currency
- * @property ?int $minimum_spend
- * @property ?int $max_discount
+ * @property ?Currency $currency
+ * @property ?Money $minimum_spend
+ * @property ?Money $max_discount
  * @property ?CarbonInterface $activated_at
  * @property ?CarbonInterface $expires_at
  * @property ?Collection<string, mixed> $meta
@@ -65,8 +70,9 @@ class Coupon extends Model
             'usage' => 'integer',
             'max_usage' => 'integer',
             'max_usage_per_redeemer' => 'integer',
-            'minimum_spend' => 'integer',
-            'max_discount' => 'integer',
+            'currency' => AsCurrency::class,
+            'minimum_spend' => AsMoney::currencyColumn('currency'),
+            'max_discount' => AsMoney::currencyColumn('currency'),
             'activated_at' => 'datetime',
             'expires_at' => 'datetime',
             'meta' => 'collection',
@@ -202,28 +208,54 @@ class Coupon extends Model
     }
 
     /**
-     * Apply the coupon to a price, returning the new total.
+     * The coupon as a money Discount, for a basket in `$for` (the coupon's own currency wins
+     * when it is locked). Hosts compose it with other discounts in a money DiscountStack.
+     * Route by its target: a free-shipping discount applies to shipping, never to goods.
      *
-     * @throws InvalidMoney when the coupon is currency-locked to another currency.
+     * @throws InvalidCouponDefinition when a fixed coupon has no currency (e.g. a row written
+     *                                 around CreateCouponAction).
      */
-    public function apply(Money $price): Money
+    public function discount(Currency $for): Discount
     {
-        $this->assertCurrency($price);
+        if ($this->type === DiscountType::Fixed && $this->currency === null) {
+            throw InvalidCouponDefinition::fixedWithoutCurrency((string) $this->code);
+        }
 
-        return $this->type->apply($price, $this->value, $this->max_discount);
+        $discount = $this->type->toDiscount((int) $this->value, $this->currency ?? $for, $this->max_discount);
+
+        // An unsaved coupon may carry no code yet.
+        $label = (string) $this->code;
+
+        return $label === '' ? $discount : $discount->labelled($label);
     }
 
     /**
-     * The amount this coupon saves off the given price (in minor units),
-     * respecting the optional discount cap.
+     * Apply the coupon to a price, returning the new total. Never negative: the discount
+     * never exceeds the price. A free-shipping coupon leaves the goods price unchanged.
      *
-     * @throws InvalidMoney when the coupon is currency-locked to another currency.
+     * @throws CurrencyMismatch when the coupon is currency-locked to another currency.
+     */
+    public function apply(Money $price): Money
+    {
+        return $price->subtract($this->discountFor($price));
+    }
+
+    /**
+     * The amount this coupon saves off the given price: between zero and the price, never
+     * above the optional cap. Free shipping removes nothing from the goods price.
+     *
+     * @throws CurrencyMismatch when the coupon is currency-locked to another currency.
+     * @throws InvalidCouponDefinition when a fixed coupon has no currency.
      */
     public function discountFor(Money $price): Money
     {
         $this->assertCurrency($price);
 
-        return $this->type->discount($price, $this->value, $this->max_discount);
+        if ($this->type === DiscountType::FreeShipping) {
+            return Money::zero($price->currency());
+        }
+
+        return $this->discount($price->currency())->amountFor($price);
     }
 
     public function isFreeShipping(): bool
@@ -246,17 +278,20 @@ class Coupon extends Model
     public function appliesToCurrency(Money $price): bool
     {
         return $this->currency === null
-            || $this->currency === $price->getCurrency();
+            || $this->currency->equals($price->currency());
     }
 
     /**
      * A coupon with no minimum spend always qualifies; otherwise the price must
-     * meet or exceed the threshold (compared in minor units).
+     * meet or exceed the threshold. The minimum spend shares the coupon's currency lock,
+     * so check appliesToCurrency() first (the guard does).
+     *
+     * @throws CurrencyMismatch when the price is in another currency than the minimum spend.
      */
     public function meetsMinimumSpend(Money $price): bool
     {
         return $this->minimum_spend === null
-            || $price->getAmount() >= $this->minimum_spend;
+            || $price->isGreaterThanOrEqualTo($this->minimum_spend);
     }
 
     /**
@@ -316,7 +351,7 @@ class Coupon extends Model
     public function previewDiscount(Money $price): Money
     {
         if (! $this->appliesToCurrency($price)) {
-            return Money::zero($price->getCurrency());
+            return Money::zero($price->currency());
         }
 
         return $this->discountFor($price);
@@ -335,12 +370,12 @@ class Coupon extends Model
     }
 
     /**
-     * @throws InvalidMoney when the coupon is currency-locked to another currency.
+     * @throws CurrencyMismatch when the coupon is currency-locked to another currency.
      */
     private function assertCurrency(Money $price): void
     {
-        if (! $this->appliesToCurrency($price)) {
-            throw InvalidMoney::currencyMismatch((string) $this->currency, $price->getCurrency());
+        if ($this->currency !== null && ! $this->currency->equals($price->currency())) {
+            throw CurrencyMismatch::between($this->currency, $price->currency());
         }
     }
 

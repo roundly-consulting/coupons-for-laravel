@@ -86,12 +86,11 @@ arch('src uses only allowed namespaces')
         'RoundlyConsulting\Coupons',
         'RoundlyConsulting\Coupons\Database\Factories',
         'RoundlyConsulting\PackageToolkit',
+        'RoundlyConsulting\Money',
         'Illuminate',
         'Carbon',
         'Closure',
-        'NumberFormatter',
         'RuntimeException',
-        'Stringable',
         // native/framework helpers used unqualified
         'app',
         'class_basename',
@@ -112,3 +111,63 @@ arch('data transfer objects are final and readonly')
     ->expect('RoundlyConsulting\Coupons\DataTransferObjects')
     ->toBeFinal()
     ->toBeReadonly();
+
+/**
+ * money-for-laravel is a hard dependency, but only its public surface is: its cast
+ * implementations, bcmath gateway and schema internals are `@internal` and may change
+ * without notice. Coupons goes through AsMoney / AsCurrency / Money / Discount only.
+ */
+it('does not import a money class marked @internal', function (): void {
+    $internal = [];
+
+    foreach (couponsPhpFilesIn(__DIR__.'/../../vendor/roundly-consulting/money-for-laravel/src') as $file) {
+        $contents = (string) file_get_contents($file->getPathname());
+
+        // Class-level only: money also tags single methods of public classes.
+        if (preg_match('/@internal\b[^\n]*\n(?:\s*\*[^\n]*\n)*\s*\*\/\s*\n(?:#\[[^\n]*\]\s*\n)*(?:(?:final|abstract|readonly)\s+)*(?:class|interface|trait|enum)\s/', $contents) !== 1
+            || preg_match('/^namespace\s+([^;]+);/m', $contents, $namespace) !== 1) {
+            continue;
+        }
+
+        $internal[] = $namespace[1].'\\'.$file->getBasename('.php');
+    }
+
+    // Pinned by name so the scan cannot silently cover nothing.
+    expect($internal)
+        ->toContain('RoundlyConsulting\Money\Casts\MoneyCast')
+        ->toContain('RoundlyConsulting\Money\Math\Calculator')
+        ->not->toContain('RoundlyConsulting\Money\Money');
+
+    $offenders = [];
+
+    foreach ([...couponsPhpFilesIn(__DIR__.'/../../src'), ...couponsPhpFilesIn(__DIR__.'/../../database')] as $file) {
+        $contents = (string) file_get_contents($file->getPathname());
+
+        foreach ($internal as $class) {
+            if (str_contains($contents, 'use '.$class.';')) {
+                $offenders[] = $file->getBasename().' → '.$class;
+            }
+        }
+    }
+
+    expect($offenders)->toBe([]);
+});
+
+/**
+ * @return list<SplFileInfo>
+ */
+function couponsPhpFilesIn(string $directory): array
+{
+    $files = [];
+
+    /** @var iterable<SplFileInfo> $iterator */
+    $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($directory, FilesystemIterator::SKIP_DOTS));
+
+    foreach ($iterator as $file) {
+        if ($file->isFile() && $file->getExtension() === 'php') {
+            $files[] = $file;
+        }
+    }
+
+    return $files;
+}

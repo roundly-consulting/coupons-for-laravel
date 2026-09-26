@@ -5,11 +5,11 @@ declare(strict_types=1);
 use RoundlyConsulting\Coupons\DataTransferObjects\RedeemCouponData;
 use RoundlyConsulting\Coupons\Models\Coupon;
 use RoundlyConsulting\Coupons\Tests\Fixtures\Customer;
-use RoundlyConsulting\Coupons\ValueObjects\Money;
+use RoundlyConsulting\Money\Money;
 
 it('holds the redemption inputs', function (): void {
     $customer = new Customer(['id' => 1]);
-    $price = new Money(5000, 'EUR');
+    $price = Money::ofMinor(5000, 'EUR');
 
     $data = new RedeemCouponData(coupon: 'SAVE20', price: $price, redeemer: $customer);
 
@@ -19,8 +19,8 @@ it('holds the redemption inputs', function (): void {
 });
 
 it('defaults the redeemer to null and accepts a model', function (): void {
-    expect((new RedeemCouponData(coupon: 'X', price: new Money(1, 'EUR')))->redeemer)->toBeNull();
+    expect((new RedeemCouponData(coupon: 'X', price: Money::ofMinor(1, 'EUR')))->redeemer)->toBeNull();
 
     $coupon = Coupon::factory()->make();
-    expect((new RedeemCouponData(coupon: $coupon, price: new Money(1, 'EUR')))->coupon)->toBe($coupon);
+    expect((new RedeemCouponData(coupon: $coupon, price: Money::ofMinor(1, 'EUR')))->coupon)->toBe($coupon);
 });

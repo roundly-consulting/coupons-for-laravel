@@ -69,11 +69,12 @@ $pgsqlOnly = fn (): bool => DriverMatrix::driver() !== 'pgsql';
 
 it('emits the frozen bigint morph schema byte-for-byte', function (): void {
     // The harness has already migrated on the default (bigint) config. This is the shipped
-    // schema — the sweep's core safety property is that it must never drift.
+    // schema — the sweep's core safety property is that it must never drift. The amount is
+    // money's decimal(38,0) column, which SQLite reports as `numeric`.
     expect(emittedCouponsTable('coupon_redemptions'))->toBe(
         'CREATE TABLE "coupon_redemptions" ("id" integer primary key autoincrement not null, '
         .'"coupon_id" integer not null, "redeemer_type" varchar, "redeemer_id" integer, '
-        .'"amount_discounted" integer not null, "currency" varchar not null, '
+        .'"amount_discounted" numeric not null, "currency" varchar not null, '
         .'"created_at" datetime, "updated_at" datetime, "deleted_at" datetime, '
         .'foreign key("coupon_id") references "coupons"("id") on delete cascade)'
     );

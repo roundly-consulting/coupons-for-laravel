@@ -6,7 +6,7 @@ namespace RoundlyConsulting\Coupons\DataTransferObjects;
 
 use Illuminate\Database\Eloquent\Model;
 use RoundlyConsulting\Coupons\Models\Coupon;
-use RoundlyConsulting\Coupons\ValueObjects\Money;
+use RoundlyConsulting\Money\Money;
 
 final readonly class RedeemCouponData
 {

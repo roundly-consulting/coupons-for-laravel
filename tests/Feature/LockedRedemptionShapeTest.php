@@ -6,7 +6,7 @@ use Illuminate\Support\Facades\DB;
 use RoundlyConsulting\Coupons\Actions\RedeemCouponAction;
 use RoundlyConsulting\Coupons\DataTransferObjects\RedeemCouponData;
 use RoundlyConsulting\Coupons\Models\Coupon;
-use RoundlyConsulting\Coupons\ValueObjects\Money;
+use RoundlyConsulting\Money\Money;
 use RoundlyConsulting\Testing\Database\DriverMatrix;
 use RoundlyConsulting\Testing\Fixtures\LockRecorder;
 use RoundlyConsulting\Testing\Fixtures\LockRecordingGrammar;
@@ -50,7 +50,7 @@ it('locks the coupon row without an aggregate the engine would reject', function
     LockRecorder::flush();
 
     app(RedeemCouponAction::class)->execute(
-        new RedeemCouponData(coupon: 'LOCKED', price: new Money(5000, 'USD'), redeemer: null),
+        new RedeemCouponData(coupon: 'LOCKED', price: Money::ofMinor(5000, 'USD'), redeemer: null),
     );
 
     $locks = LockRecorder::recorded();

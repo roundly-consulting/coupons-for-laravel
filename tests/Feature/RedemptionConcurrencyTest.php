@@ -8,7 +8,7 @@ use RoundlyConsulting\Coupons\Actions\RedeemCouponAction;
 use RoundlyConsulting\Coupons\DataTransferObjects\RedeemCouponData;
 use RoundlyConsulting\Coupons\Exceptions\CouponAtMaxUsage;
 use RoundlyConsulting\Coupons\Models\Coupon;
-use RoundlyConsulting\Coupons\ValueObjects\Money;
+use RoundlyConsulting\Money\Money;
 
 /**
  * Redemption limits are a money boundary: two racing redeemers must never push a
@@ -20,7 +20,7 @@ use RoundlyConsulting\Coupons\ValueObjects\Money;
 function redeemCode(string $code): void
 {
     app(RedeemCouponAction::class)->execute(
-        new RedeemCouponData(coupon: $code, price: new Money(5000, 'EUR'), redeemer: null),
+        new RedeemCouponData(coupon: $code, price: Money::ofMinor(5000, 'EUR'), redeemer: null),
     );
 }
 
@@ -31,7 +31,7 @@ function redeemCode(string $code): void
 // that a lock was asked for. Credits proved that distinction is the whole bug.
 
 it('increments usage with a relative write, not a stale read-modify-write', function (): void {
-    Coupon::factory()->fixed(500)->active()->create(['code' => 'RELATIVE', 'max_usage' => 0]);
+    Coupon::factory()->fixed(500, 'EUR')->active()->create(['code' => 'RELATIVE', 'max_usage' => 0]);
 
     $statements = [];
     DB::listen(function (QueryExecuted $query) use (&$statements): void {
@@ -50,7 +50,7 @@ it('increments usage with a relative write, not a stale read-modify-write', func
 });
 
 it('never loses a redemption that lands between the locked read and the write', function (): void {
-    $coupon = Coupon::factory()->fixed(500)->active()->create(['code' => 'RACE', 'max_usage' => 0]);
+    $coupon = Coupon::factory()->fixed(500, 'EUR')->active()->create(['code' => 'RACE', 'max_usage' => 0]);
     $interleaved = false;
 
     // Simulate the worst case: another redemption commits its increment after we
@@ -73,7 +73,7 @@ it('never loses a redemption that lands between the locked read and the write', 
 });
 
 it('rejects the redemption that would exceed the cap instead of overshooting it', function (): void {
-    $coupon = Coupon::factory()->fixed(500)->active()->create(['code' => 'CAPPED', 'max_usage' => 1]);
+    $coupon = Coupon::factory()->fixed(500, 'EUR')->active()->create(['code' => 'CAPPED', 'max_usage' => 1]);
 
     redeemCode('CAPPED');
 

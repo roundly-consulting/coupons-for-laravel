@@ -6,7 +6,7 @@ use Illuminate\Support\Facades\Validator;
 use RoundlyConsulting\Coupons\Models\Coupon;
 use RoundlyConsulting\Coupons\Rules\Redeemable;
 use RoundlyConsulting\Coupons\Tests\Fixtures\Customer;
-use RoundlyConsulting\Coupons\ValueObjects\Money;
+use RoundlyConsulting\Money\Money;
 
 function validateCode(string $code, ?Redeemable $rule = null): Illuminate\Validation\Validator
 {
@@ -52,8 +52,8 @@ it('fails for a redeemer who already redeemed the coupon', function (): void {
     $coupon->redemptions()->create([
         'redeemer_type' => $customer->getMorphClass(),
         'redeemer_id' => $customer->getKey(),
-        'amount_discounted' => 100,
         'currency' => 'USD',
+        'amount_discounted' => Money::ofMinor(100, 'USD'),
     ]);
 
     $validator = validateCode('ONCE', new Redeemable(redeemer: $customer));
@@ -62,9 +62,9 @@ it('fails for a redeemer who already redeemed the coupon', function (): void {
 });
 
 it('fails when the cart total is below the minimum spend', function (): void {
-    Coupon::factory()->active()->fixed()->withMinimumSpend(2000)->create(['code' => 'BIG']);
+    Coupon::factory()->active()->fixed()->withMinimumSpend(Money::ofMinor(2000, 'USD'))->create(['code' => 'BIG']);
 
-    $validator = validateCode('BIG', new Redeemable(cartTotal: new Money(1000, 'USD')));
+    $validator = validateCode('BIG', new Redeemable(cartTotal: Money::ofMinor(1000, 'USD')));
 
     expect($validator->errors()->first('code'))->toBe('Your total does not meet this coupon’s minimum spend.');
 });
@@ -72,13 +72,13 @@ it('fails when the cart total is below the minimum spend', function (): void {
 it('fails when the cart currency does not match', function (): void {
     Coupon::factory()->active()->fixed()->forCurrency('EUR')->create(['code' => 'EUR10']);
 
-    $validator = validateCode('EUR10', new Redeemable(cartTotal: new Money(1000, 'USD')));
+    $validator = validateCode('EUR10', new Redeemable(cartTotal: Money::ofMinor(1000, 'USD')));
 
     expect($validator->errors()->first('code'))->toBe('This coupon cannot be used in the selected currency.');
 });
 
 it('skips money checks without a cart total', function (): void {
-    Coupon::factory()->active()->fixed()->forCurrency('EUR')->withMinimumSpend(9999)->create(['code' => 'EURONLY']);
+    Coupon::factory()->active()->fixed()->forCurrency('EUR')->withMinimumSpend(Money::ofMinor(9999, 'EUR'))->create(['code' => 'EURONLY']);
 
     expect(validateCode('EURONLY')->passes())->toBeTrue();
 });
@@ -89,8 +89,8 @@ it('skips the per-redeemer check without a redeemer', function (): void {
     $coupon->redemptions()->create([
         'redeemer_type' => $customer->getMorphClass(),
         'redeemer_id' => $customer->getKey(),
-        'amount_discounted' => 100,
         'currency' => 'USD',
+        'amount_discounted' => Money::ofMinor(100, 'USD'),
     ]);
 
     expect(validateCode('SHARED')->passes())->toBeTrue();

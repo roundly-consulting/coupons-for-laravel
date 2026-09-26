@@ -3,25 +3,32 @@
 declare(strict_types=1);
 
 use RoundlyConsulting\Coupons\Enums\DiscountType;
-use RoundlyConsulting\Coupons\ValueObjects\Money;
+use RoundlyConsulting\Money\Currency;
+use RoundlyConsulting\Money\Enums\DiscountTarget;
+use RoundlyConsulting\Money\Enums\DiscountType as MoneyDiscountType;
+use RoundlyConsulting\Money\Money;
 
-it('subtracts a fixed amount in minor units', function (): void {
-    $result = DiscountType::Fixed->apply(new Money(1000, 'EUR'), 250);
+it('maps a fixed value to a fixed money discount in the given currency', function (): void {
+    $discount = DiscountType::Fixed->toDiscount(250, Currency::of('EUR'));
 
-    expect($result->getAmount())->toBe(750)
-        ->and($result->getCurrency())->toBe('EUR');
+    expect($discount->type())->toBe(MoneyDiscountType::Fixed)
+        ->and($discount->fixedAmount()?->equals(Money::ofMinor(250, 'EUR')))->toBeTrue()
+        ->and($discount->amountFor(Money::ofMinor(1000, 'EUR'))->minor())->toBe('250')
+        ->and($discount->applyTo(Money::ofMinor(1000, 'EUR'))->minor())->toBe('750');
 });
 
-it('subtracts a percentage of the price', function (): void {
-    $result = DiscountType::Percentage->apply(new Money(1000, 'EUR'), 25);
+it('maps a percentage value in basis points', function (): void {
+    $quarter = DiscountType::Percentage->toDiscount(2500, Currency::of('EUR'));
+    $eighth = DiscountType::Percentage->toDiscount(1250, Currency::of('EUR'));
 
-    expect($result->getAmount())->toBe(750);
+    expect($quarter->percent()?->value())->toBe('25')
+        ->and($quarter->amountFor(Money::ofMinor(1000, 'EUR'))->minor())->toBe('250')
+        ->and($eighth->percent()?->value())->toBe('12.5')
+        ->and($eighth->amountFor(Money::ofMinor(999, 'EUR'))->minor())->toBe('125');
 });
 
-it('never produces a negative fixed discount', function (): void {
-    $result = DiscountType::Fixed->apply(new Money(100, 'EUR'), 500);
-
-    expect($result->getAmount())->toBe(0);
+it('never produces a fixed discount above the price', function (): void {
+    expect(DiscountType::Fixed->toDiscount(500, Currency::of('EUR'))->amountFor(Money::ofMinor(100, 'EUR'))->minor())->toBe('100');
 });
 
 it('exposes its string backing values', function (): void {
@@ -30,24 +37,31 @@ it('exposes its string backing values', function (): void {
         ->and(DiscountType::FreeShipping->value)->toBe('free_shipping');
 });
 
-it('treats free shipping as a zero discount', function (): void {
-    expect(DiscountType::FreeShipping->discount(new Money(1000, 'EUR'), 0)->getAmount())->toBe(0)
-        ->and(DiscountType::FreeShipping->apply(new Money(1000, 'EUR'), 0)->getAmount())->toBe(1000);
+it('maps free shipping to a discount on the shipping target', function (): void {
+    $discount = DiscountType::FreeShipping->toDiscount(0, Currency::of('EUR'));
+
+    expect($discount->target())->toBe(DiscountTarget::Shipping)
+        ->and($discount->amountFor(Money::ofMinor(495, 'EUR'))->minor())->toBe('495');
 });
 
 it('caps a percentage discount at the maximum discount', function (): void {
-    $discount = DiscountType::Percentage->discount(new Money(1000, 'EUR'), 50, maxDiscount: 300);
+    $discount = DiscountType::Percentage->toDiscount(5000, Currency::of('EUR'), Money::ofMinor(300, 'EUR'));
 
-    expect($discount->getAmount())->toBe(300)
-        ->and(DiscountType::Percentage->apply(new Money(1000, 'EUR'), 50, maxDiscount: 300)->getAmount())->toBe(700);
+    expect($discount->cap()?->equals(Money::ofMinor(300, 'EUR')))->toBeTrue()
+        ->and($discount->amountFor(Money::ofMinor(1000, 'EUR'))->minor())->toBe('300');
 });
 
 it('leaves a percentage discount unchanged below the cap', function (): void {
-    expect(DiscountType::Percentage->discount(new Money(1000, 'EUR'), 10, maxDiscount: 300)->getAmount())->toBe(100);
+    expect(DiscountType::Percentage->toDiscount(1000, Currency::of('EUR'), Money::ofMinor(300, 'EUR'))->amountFor(Money::ofMinor(1000, 'EUR'))->minor())->toBe('100');
 });
 
 it('caps a fixed discount at the maximum discount', function (): void {
-    expect(DiscountType::Fixed->discount(new Money(1000, 'EUR'), 800, maxDiscount: 500)->getAmount())->toBe(500);
+    expect(DiscountType::Fixed->toDiscount(800, Currency::of('EUR'), Money::ofMinor(500, 'EUR'))->amountFor(Money::ofMinor(1000, 'EUR'))->minor())->toBe('500');
+});
+
+it('respects the currency exponent of a fixed value', function (): void {
+    expect((string) DiscountType::Fixed->toDiscount(500, Currency::of('JPY'))->fixedAmount())->toBe('500 JPY')
+        ->and((string) DiscountType::Fixed->toDiscount(500, Currency::of('BHD'))->fixedAmount())->toBe('0.500 BHD');
 });
 
 it('exposes a translatable label for each type', function (): void {

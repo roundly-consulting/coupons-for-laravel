@@ -14,14 +14,16 @@ return new class extends Migration
         Schema::create('coupons', function (Blueprint $table): void {
             $table->id();
             $table->string('type')->default(DiscountType::Fixed->value);
-            $table->integer('value');
+            // Fixed: minor units of `currency`; Percentage: basis points. An int, not a money column.
+            $table->bigInteger('value');
             $table->string('code')->unique();
             $table->integer('usage')->default(0);
             $table->integer('max_usage')->default(0);
             $table->unsignedInteger('max_usage_per_redeemer')->default(0);
-            $table->string('currency', 3)->nullable();
-            $table->unsignedInteger('minimum_spend')->nullable();
-            $table->unsignedInteger('max_discount')->nullable();
+            $table->currencyCode('currency', nullable: true);
+            // Both share the coupon's currency column (added above, so the macro skips it).
+            $table->money('minimum_spend', currency: 'currency', nullable: true);
+            $table->money('max_discount', currency: 'currency', nullable: true);
             $table->timestamp('activated_at')->nullable();
             $table->timestamp('expires_at')->nullable();
             $table->jsonb('meta')->nullable();

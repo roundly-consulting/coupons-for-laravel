@@ -5,6 +5,8 @@ declare(strict_types=1);
 use Illuminate\Support\Facades\DB;
 use RoundlyConsulting\Coupons\CouponsServiceProvider;
 use RoundlyConsulting\Coupons\Models\Coupon;
+use RoundlyConsulting\Money\Exceptions\InvalidMoneyValue;
+use RoundlyConsulting\Money\Money;
 use RoundlyConsulting\Testing\Database\DriverMatrix;
 
 /**
@@ -87,11 +89,11 @@ it('runs on the driver the environment declared', function (): void {
  * back the int 2, not "2" — so each key keeps a strict assertion.
  */
 it('round-trips the coupon columns on the configured engine', function (): void {
-    $coupon = Coupon::factory()->fixed(500)->active()->create([
+    $coupon = Coupon::factory()->fixed(500, 'EUR')->active()->create([
         'code' => 'ROUNDTRIP',
         'meta' => ['campaign' => 'launch', 'tier' => 2],
         'currency' => 'EUR',
-        'minimum_spend' => 1000,
+        'minimum_spend' => Money::ofMinor(1000, 'EUR'),
     ]);
 
     $fresh = $coupon->fresh();
@@ -99,6 +101,26 @@ it('round-trips the coupon columns on the configured engine', function (): void 
     expect($fresh?->meta?->get('campaign'))->toBe('launch')
         ->and($fresh?->meta?->get('tier'))->toBe(2)
         ->and($fresh?->value)->toBe(500)
-        ->and($fresh?->currency)->toBe('EUR')
-        ->and($fresh?->minimum_spend)->toBe(1000);
+        ->and($fresh?->currency?->code)->toBe('EUR')
+        ->and($fresh?->minimum_spend?->minor())->toBe('1000');
 });
+
+/**
+ * money's decimal(38,0) columns hold amounts past int64 exactly on a real engine; SQLite
+ * stores them as REAL beyond int64, so money's cast refuses them there loudly instead.
+ */
+it('round-trips a minimum spend beyond int64 on pgsql', function (): void {
+    $wide = Money::ofMinor('100000000000000000000', 'EUR');
+
+    $coupon = Coupon::factory()->percentage(1000)->withMinimumSpend($wide)->create(['code' => 'WIDE']);
+
+    /** @var object{minimum_spend: string|int} $row */
+    $row = DB::table('coupons')->where('code', 'WIDE')->first(['minimum_spend']);
+
+    expect($coupon->fresh()?->minimum_spend?->equals($wide))->toBeTrue()
+        ->and((string) $row->minimum_spend)->toBe('100000000000000000000');
+})->skip(fn (): bool => DriverMatrix::driver() !== 'pgsql', 'needs an engine with exact decimal(38,0)');
+
+it('refuses a minimum spend beyond int64 on sqlite', function (): void {
+    Coupon::factory()->percentage(1000)->withMinimumSpend(Money::ofMinor('100000000000000000000', 'EUR'))->create();
+})->throws(InvalidMoneyValue::class)->skip(fn (): bool => DriverMatrix::driver() !== 'sqlite', 'sqlite-only engine range guard');

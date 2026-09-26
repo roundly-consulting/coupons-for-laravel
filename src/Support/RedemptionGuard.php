@@ -12,7 +12,7 @@ use RoundlyConsulting\Coupons\Exceptions\CouponExpired;
 use RoundlyConsulting\Coupons\Exceptions\CurrencyMismatch;
 use RoundlyConsulting\Coupons\Exceptions\MinimumSpendNotMet;
 use RoundlyConsulting\Coupons\Models\Coupon;
-use RoundlyConsulting\Coupons\ValueObjects\Money;
+use RoundlyConsulting\Money\Money;
 
 /**
  * The single source of truth for coupon eligibility. Runs the redemption checks
@@ -63,12 +63,12 @@ final class RedemptionGuard
         throw match ($reason) {
             RedemptionFailureReason::CurrencyMismatch => CurrencyMismatch::forCode(
                 $coupon->code,
-                (string) $coupon->currency,
-                $price->getCurrency(),
+                $coupon->currency->code ?? '',
+                $price->currency()->code,
             ),
             RedemptionFailureReason::MinimumSpendNotMet => MinimumSpendNotMet::forCode(
                 $coupon->code,
-                (int) $coupon->minimum_spend,
+                $coupon->minimum_spend ?? Money::zero($price->currency()),
             ),
             RedemptionFailureReason::Expired => CouponExpired::forCode($coupon->code),
             RedemptionFailureReason::AtMaxUsage => CouponAtMaxUsage::forCode($coupon->code),

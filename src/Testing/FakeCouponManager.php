@@ -14,7 +14,8 @@ use RoundlyConsulting\Coupons\Enums\DiscountType;
 use RoundlyConsulting\Coupons\Enums\RedemptionFailureReason;
 use RoundlyConsulting\Coupons\Models\Coupon;
 use RoundlyConsulting\Coupons\Support\RedemptionGuard;
-use RoundlyConsulting\Coupons\ValueObjects\Money;
+use RoundlyConsulting\Money\Currency;
+use RoundlyConsulting\Money\Money;
 
 /**
  * A test double for CouponManager that records calls instead of writing to the
@@ -32,11 +33,12 @@ final class FakeCouponManager extends CouponManager
     /** @var list<array{code: string, reason: RedemptionFailureReason}> */
     private array $failed = [];
 
-    public function generate(DiscountType $type, int $value, ?string $code = null, int $maxUsage = 0): Coupon
+    public function generate(DiscountType $type, int $value, ?string $code = null, int $maxUsage = 0, Currency|string|null $currency = null): Coupon
     {
         return $this->create(new CreateCouponData(
             type: $type,
             value: $value,
+            currency: is_string($currency) ? Currency::of($currency) : $currency,
             code: $code,
             maxUsage: $maxUsage,
         ));
@@ -49,6 +51,9 @@ final class FakeCouponManager extends CouponManager
             'value' => $data->value,
             'code' => $data->code ?? 'FAKE-'.(count($this->created) + 1),
             'max_usage' => $data->maxUsage,
+            'currency' => $data->lockedCurrency(),
+            'minimum_spend' => $data->minimumSpend,
+            'max_discount' => $data->maxDiscount,
         ]);
 
         $this->created[] = $coupon;
@@ -103,7 +108,7 @@ final class FakeCouponManager extends CouponManager
 
         $result = new RedemptionResult(
             coupon: $model,
-            discount: Money::zero($price->getCurrency()),
+            discount: Money::zero($price->currency()),
             total: $price,
             redeemer: $redeemer,
             freeShipping: $model->isFreeShipping(),

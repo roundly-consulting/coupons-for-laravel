@@ -18,7 +18,8 @@ use RoundlyConsulting\Coupons\Facades\Coupons;
 use RoundlyConsulting\Coupons\Models\Coupon;
 use RoundlyConsulting\Coupons\Support\CouponModel;
 use RoundlyConsulting\Coupons\Testing\FakeCouponManager;
-use RoundlyConsulting\Coupons\ValueObjects\Money;
+use RoundlyConsulting\Money\Currency;
+use RoundlyConsulting\Money\Money;
 
 class CouponManager
 {
@@ -28,13 +29,16 @@ class CouponManager
     ) {}
 
     /**
-     * Generate a coupon, auto-creating a code when none is given.
+     * Generate a coupon, auto-creating a code when none is given. `$value` is minor units of
+     * `$currency` for a fixed coupon (which must be locked to a currency) and basis points
+     * for a percentage (2500 = 25 %).
      */
-    public function generate(DiscountType $type, int $value, ?string $code = null, int $maxUsage = 0): Coupon
+    public function generate(DiscountType $type, int $value, ?string $code = null, int $maxUsage = 0, Currency|string|null $currency = null): Coupon
     {
         return $this->create(new CreateCouponData(
             type: $type,
             value: $value,
+            currency: is_string($currency) ? Currency::of($currency) : $currency,
             code: $code,
             maxUsage: $maxUsage,
         ));

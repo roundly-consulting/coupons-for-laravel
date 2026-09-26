@@ -22,7 +22,7 @@ use RoundlyConsulting\Coupons\Exceptions\MinimumSpendNotMet;
 use RoundlyConsulting\Coupons\Models\Coupon;
 use RoundlyConsulting\Coupons\Support\CouponModel;
 use RoundlyConsulting\Coupons\Support\RedemptionGuard;
-use RoundlyConsulting\Coupons\ValueObjects\Money;
+use RoundlyConsulting\Money\Money;
 
 final class RedeemCouponAction
 {
@@ -115,8 +115,8 @@ final class RedeemCouponAction
         $coupon->redemptions()->create([
             'redeemer_type' => $redeemer->getMorphClass(),
             'redeemer_id' => $redeemer->getKey(),
-            'amount_discounted' => $discount->getAmount(),
-            'currency' => $discount->getCurrency(),
+            // money's cast writes the amount and its currency column together.
+            'amount_discounted' => $discount,
         ]);
     }
 

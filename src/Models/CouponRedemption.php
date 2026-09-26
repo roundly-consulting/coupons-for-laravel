@@ -11,14 +11,15 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use RoundlyConsulting\Coupons\Database\Factories\CouponRedemptionFactory;
-use RoundlyConsulting\Coupons\ValueObjects\Money;
+use RoundlyConsulting\Money\Casts\AsMoney;
+use RoundlyConsulting\Money\Money;
 
 /**
  * @property int $id
  * @property int $coupon_id
  * @property ?string $redeemer_type
  * @property ?int $redeemer_id
- * @property int $amount_discounted
+ * @property Money $amount_discounted
  * @property string $currency
  * @property ?CarbonInterface $created_at
  * @property ?CarbonInterface $updated_at
@@ -46,7 +47,7 @@ final class CouponRedemption extends Model
         return [
             'coupon_id' => 'integer',
             'redeemer_id' => 'integer',
-            'amount_discounted' => 'integer',
+            'amount_discounted' => AsMoney::currencyColumn('currency'),
         ];
     }
 
@@ -64,6 +65,6 @@ final class CouponRedemption extends Model
 
     public function discount(): Money
     {
-        return new Money($this->amount_discounted, $this->currency);
+        return $this->amount_discounted;
     }
 }
