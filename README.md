@@ -156,6 +156,10 @@ Coupons::revoke('SAVE20');                // expire it now (reversible), fires C
 Coupons::createQuietly($data);            // create without dispatching CouponCreated
 ```
 
+A new coupon starts **inactive** (`activated_at` is null), so redeeming it throws
+`CouponExpired` until you activate it: `$coupon->activate()->save()` (or pass a future
+`CarbonInterface` to schedule it).
+
 `revoke()` is a reversible kill-switch: it sets `expires_at` to now (the row is **not**
 deleted) and fires `CouponRevoked`. Re-activate later with `$coupon->expire($future)->save()`
 or by clearing `expires_at`. `createQuietly()` is for seeders and fixtures that don't want
