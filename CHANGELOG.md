@@ -20,6 +20,12 @@ place rather than evolved with a follow-up migration. Re-run migrations on a fre
   update.
 - `coupons:expire` and `coupons:prune` now resolve the model from `coupons.model` (they queried
   the packaged `Coupon`, so a host subclass's model events and overrides never ran).
+- With a host subclass in `coupons.model`, redeeming for a redeemer no longer fails: the
+  redemptions relation derived its foreign key from the class name (`custom_coupon_id`), so
+  recording a redemption and every per-redeemer cap check hit a missing column. A redemption's
+  `coupon` now hydrates the configured model too.
+- `CouponRedemption::$redeemer_id` is no longer cast to an integer, which turned a uuid/ulid
+  redeemer key (`coupons.key_type`) into a number and broke `$redemption->redeemer`.
 
 ### Changed — money-for-laravel
 

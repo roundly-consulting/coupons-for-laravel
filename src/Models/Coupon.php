@@ -165,10 +165,16 @@ class Coupon extends Model
         return $this->max_usage > 0 && $this->usage >= $this->max_usage;
     }
 
-    /** @return HasMany<CouponRedemption, $this> */
+    /**
+     * The key is named explicitly: Eloquent would derive it from the class name, and a host
+     * subclass swapped in through `coupons.model` (say `ShopCoupon`) would then look for a
+     * `shop_coupon_id` column that does not exist.
+     *
+     * @return HasMany<CouponRedemption, $this>
+     */
     public function redemptions(): HasMany
     {
-        return $this->hasMany(CouponRedemption::class);
+        return $this->hasMany(CouponRedemption::class, 'coupon_id');
     }
 
     /**

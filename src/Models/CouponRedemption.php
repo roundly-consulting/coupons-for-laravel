@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use RoundlyConsulting\Coupons\Database\Factories\CouponRedemptionFactory;
+use RoundlyConsulting\Coupons\Support\CouponModel;
 use RoundlyConsulting\Money\Casts\AsMoney;
 use RoundlyConsulting\Money\Money;
 
@@ -51,10 +52,14 @@ final class CouponRedemption extends Model
         ];
     }
 
-    /** @return BelongsTo<Coupon, $this> */
+    /**
+     * The redeemed coupon, hydrated as the `coupons.model` class.
+     *
+     * @return BelongsTo<Coupon, $this>
+     */
     public function coupon(): BelongsTo
     {
-        return $this->belongsTo(Coupon::class);
+        return $this->belongsTo(CouponModel::class(), 'coupon_id');
     }
 
     /** @return MorphTo<Model, $this> */

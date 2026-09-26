@@ -8,9 +8,11 @@ use RoundlyConsulting\Coupons\Actions\RedeemCouponAction;
 use RoundlyConsulting\Coupons\DataTransferObjects\CreateCouponData;
 use RoundlyConsulting\Coupons\DataTransferObjects\RedeemCouponData;
 use RoundlyConsulting\Coupons\Events\CouponRevoked;
+use RoundlyConsulting\Coupons\Exceptions\CouponAlreadyRedeemed;
 use RoundlyConsulting\Coupons\Exceptions\CouponAtMaxUsage;
 use RoundlyConsulting\Coupons\Facades\Coupons;
 use RoundlyConsulting\Coupons\Tests\Fixtures\CustomCoupon;
+use RoundlyConsulting\Coupons\Tests\Fixtures\Customer;
 use RoundlyConsulting\Coupons\Tests\Fixtures\SwappedCouponTestCase;
 use RoundlyConsulting\Money\Money;
 
@@ -136,3 +138,36 @@ it('prunes coupons through the swapped model', function (bool $force): void {
 // defaults to the packaged model — is pinned once in tests/Unit/ArchTest.php by
 // `ArchPresets::swappableModelsAreNotFinal()`. It deliberately does NOT live here: that
 // preset asserts the config *default*, which this directory has swapped away.
+
+/**
+ * The inverse relation is a call site too: a redemption row's `coupon` must hydrate the
+ * host's model, or `$redemption->coupon` loses every host override.
+ */
+it('resolves a redemption back to the swapped coupon model', function (): void {
+    expect('coupons.model')->toHonourModelSwap(CustomCoupon::class, function (): array {
+        createActiveCoupon('RELSWAP');
+
+        $customer = Customer::query()->create(['name' => 'Ada']);
+        $customer->redeemCoupon('RELSWAP', Money::ofMinor(5000, 'USD'));
+
+        return [$customer->couponRedemptions()->sole()->coupon];
+    });
+});
+
+/**
+ * Tracked redemptions — the redeemer's row and the per-redeemer cap it feeds — through the
+ * swapped model. A class-name-derived foreign key (`custom_coupon_id`) broke both.
+ */
+it('records and caps per-redeemer redemptions through the swapped model', function (): void {
+    $coupon = createActiveCoupon('PERSWAP');
+    $coupon->update(['max_usage_per_redeemer' => 1]);
+
+    $customer = Customer::query()->create(['name' => 'Ada']);
+    $customer->redeemCoupon('PERSWAP', Money::ofMinor(5000, 'USD'));
+
+    expect($coupon->refresh()->redemptions()->count())->toBe(1)
+        ->and($coupon->usageBy($customer))->toBe(1)
+        ->and($coupon->remainingUsageFor($customer))->toBe(0)
+        ->and(fn (): mixed => $customer->redeemCoupon('PERSWAP', Money::ofMinor(5000, 'USD')))
+        ->toThrow(CouponAlreadyRedeemed::class);
+});
