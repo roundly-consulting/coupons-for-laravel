@@ -12,12 +12,14 @@ Create, manage, redeem, and apply discount coupons in Laravel. Coupons support f
 percentage (optionally capped), and free-shipping discounts, an optional currency lock and
 minimum spend, activation and expiry windows, global and per-redeemer usage limits, a
 validated **atomic** redemption flow, query scopes, route-model binding, console commands, a
-fluent `Coupons` facade, and a native immutable `Money` value object — with no third-party
-runtime dependencies.
+fluent `Coupons` facade — with every amount a
+[money-for-laravel](https://github.com/roundly-consulting/money-for-laravel) `Money`
+(exponent-correct for JPY/BHD, arbitrary precision, no floats) and no third-party runtime
+dependencies.
 
 ## Requirements
 
-- PHP 8.4
+- PHP 8.4 with `ext-bcmath`
 - Laravel 12 or 13
 
 ## Installation
@@ -78,63 +80,45 @@ return [
 
 The package ships sensible defaults and works with zero configuration.
 
-### Money & the minor-unit convention
+### Money, units & the currency lock
 
-`Money` stores an integer amount in the currency's **minor unit** (e.g. cents) plus an ISO
-4217 code, matching the convention used across the org's packages. Formatting and
-`Money::fromMajor()` assume **two minor digits** (÷100), which covers the common currencies;
-currencies with a different exponent are out of scope.
+Every amount is a `RoundlyConsulting\Money\Money` from money-for-laravel — minor units as an
+exact integer string, in a registered currency with its real exponent (`500 JPY` is ¥500,
+`1500 BHD` is 1.500 BD). A coupon's `value` means:
+
+| Type | `value` | Example |
+|---|---|---|
+| `Fixed` | minor units of the coupon's `currency` | `500` + `EUR` = €5.00 off |
+| `Percentage` | **basis points** (0..10 000) | `2500` = 25 %, `1250` = 12.5 % |
+| `FreeShipping` | ignored (`0`) | — |
+
+A coupon **must** be locked to a currency when it is `Fixed` or has a `minimum_spend` /
+`max_discount` — both are `Money` in the coupon's `currency` (they share that column).
+`CreateCouponAction` enforces it (`InvalidCouponDefinition`), and a `Fixed` row written around
+the action without a currency is refused when it is used. Percentage and free-shipping coupons
+without a minimum spend or cap may stay unlocked and apply to any currency.
 
 ## Usage
 
-### Money value object
-
-Discounts operate on an immutable `Money` value object — an integer amount in the currency's
-minor unit (e.g. cents) plus an ISO 4217 currency code.
-
-```php
-use RoundlyConsulting\Coupons\ValueObjects\Money;
-
-$price = new Money(1000, 'EUR'); // €10.00
-
-$price->getAmount();        // 1000
-$price->getCurrency();      // 'EUR'
-$price->add(new Money(500, 'EUR'));      // €15.00
-$price->subtract(new Money(250, 'EUR')); // €7.50 (clamped at zero)
-$price->multiply(0.5);                    // €5.00
-$price->format('en_US');                  // "€10.00"
-
-Money::zero('EUR');                       // €0.00
-Money::fromMajor(10.50, 'EUR');           // €10.50 (1050 minor units)
-
-$price->isPositive();        // true
-$price->percentageOf(25);    // €2.50 (25% of €10.00)
-
-// Penny-accurate split: the parts always sum back to the original.
-$price->allocate([1, 1, 1]); // [€3.34, €3.33, €3.33]
-$price->allocate([7, 3]);    // [€7.00, €3.00]
-```
-
 ### Discount types
 
-The `DiscountType` enum decides how a coupon's value is applied to a price:
+The `DiscountType` enum names how a coupon's value applies; the math is money-for-laravel's
+`Discount`:
 
 ```php
 use RoundlyConsulting\Coupons\Enums\DiscountType;
-use RoundlyConsulting\Coupons\ValueObjects\Money;
+use RoundlyConsulting\Money\Currency;
+use RoundlyConsulting\Money\Money;
 
-// Subtract a fixed amount in minor units.
-DiscountType::Fixed->apply(new Money(1000, 'EUR'), 250);      // €7.50
+$eur = Currency::of('EUR');
 
-// Subtract a percentage (value is whole percent).
-DiscountType::Percentage->apply(new Money(1000, 'EUR'), 25);  // €7.50
+DiscountType::Fixed->toDiscount(250, $eur)->applyTo(Money::ofMinor(1000, 'EUR'));        // 7.50 EUR
+DiscountType::Percentage->toDiscount(1250, $eur)->amountFor(Money::ofMinor(999, 'EUR'));  // 1.25 EUR (12.5 %, half away from zero)
+DiscountType::Percentage->toDiscount(5000, $eur, cap: Money::ofMinor(300, 'EUR'));       // 50 % capped at 3.00 EUR
 
-// Cap the discount at a maximum (minor units).
-DiscountType::Percentage->apply(new Money(1000, 'EUR'), 50, maxDiscount: 300); // €7.00
-
-// Free shipping is a marker: it discounts nothing from the price. The host
-// zeroes its own shipping total when the redemption reports free shipping.
-DiscountType::FreeShipping->apply(new Money(1000, 'EUR'), 0); // €10.00 (unchanged)
+// Free shipping is a discount on the SHIPPING target — route by $discount->target(); never
+// apply it to the price of the goods.
+DiscountType::FreeShipping->toDiscount(0, $eur)->target(); // DiscountTarget::Shipping
 
 // Translatable labels and descriptions for admin UIs:
 DiscountType::Percentage->label();         // "Percentage"
@@ -149,14 +133,15 @@ The `Coupons` facade is the discoverable entry point — generate, find, and red
 ```php
 use RoundlyConsulting\Coupons\Facades\Coupons;
 use RoundlyConsulting\Coupons\Enums\DiscountType;
-use RoundlyConsulting\Coupons\ValueObjects\Money;
+use RoundlyConsulting\Money\Money;
 
-$coupon = Coupons::generate(DiscountType::Percentage, value: 20, code: 'SAVE20', maxUsage: 100);
+$coupon = Coupons::generate(DiscountType::Percentage, value: 2000, code: 'SAVE20', maxUsage: 100); // 20 %
+$coupon = Coupons::generate(DiscountType::Fixed, value: 500, code: 'FIVE', currency: 'EUR');       // €5.00
 
 $coupon = Coupons::find('SAVE20');        // ?Coupon
 $coupon = Coupons::findOrFail('SAVE20');  // throws CouponNotFound
 
-$result = Coupons::redeem('SAVE20', new Money(5000, 'EUR'), redeemer: $user);
+$result = Coupons::redeem('SAVE20', Money::ofMinor(5000, 'EUR'), redeemer: $user);
 
 Coupons::exists('SAVE20');                // bool
 Coupons::redeemable()->get();             // query builder of redeemable coupons
@@ -178,16 +163,33 @@ generated when you don't supply one, and a `CouponCreated` event is dispatched.
 use RoundlyConsulting\Coupons\Actions\CreateCouponAction;
 use RoundlyConsulting\Coupons\DataTransferObjects\CreateCouponData;
 use RoundlyConsulting\Coupons\Enums\DiscountType;
+use RoundlyConsulting\Money\Currency;
+use RoundlyConsulting\Money\Money;
 
-$coupon = app(CreateCouponAction::class)->execute(
-    new CreateCouponData(
-        type: DiscountType::Percentage,
-        value: 20,           // 20% off
-        code: 'SAVE20',      // optional — auto-generated when omitted
-        maxUsage: 100,       // optional — 0 means unlimited
-    ),
-);
+$create = app(CreateCouponAction::class);
+
+// Named constructors pick the unit and the currency lock for you:
+$create->execute(CreateCouponData::fixed(Money::ofMinor(500, 'EUR'), code: 'FIVE'));             // €5.00, locked to EUR
+$create->execute(CreateCouponData::percentage('12.5', code: 'EIGHTH',
+    maxDiscount: Money::ofMinor(1500, 'EUR')));                                                   // 12.5 %, capped, locked to EUR
+$create->execute(CreateCouponData::freeShipping(code: 'SHIP', minimumSpend: Money::ofMinor(3000, 'EUR')));
+
+// Or the full DTO:
+$create->execute(new CreateCouponData(
+    type: DiscountType::Percentage,
+    value: 2000,                         // basis points: 20 % off
+    currency: Currency::of('EUR'),       // optional lock (required for Fixed / min spend / cap)
+    code: 'SAVE20',                      // optional — auto-generated when omitted
+    maxUsage: 100,                       // optional — 0 means unlimited
+    minimumSpend: Money::ofMinor(5000, 'EUR'),
+    maxDiscount: Money::ofMinor(1000, 'EUR'),
+));
 ```
+
+`CreateCouponAction` throws `InvalidCouponDefinition` for a `Fixed` coupon without a currency,
+a negative fixed value, or a percentage outside 0..10 000 basis points; a minimum spend or cap
+in another currency than the lock throws money's `CurrencyMismatch`. `CreateCouponData::fixed()`
+throws money's `AmountOverflow` for an amount beyond int64 minor units (`value` is a `bigint`).
 
 ### Redeeming a coupon
 
@@ -198,16 +200,16 @@ per-redeemer row when tracking is on, and dispatches `CouponRedeemed`. It return
 
 ```php
 use RoundlyConsulting\Coupons\Facades\Coupons;
-use RoundlyConsulting\Coupons\ValueObjects\Money;
+use RoundlyConsulting\Money\Money;
 
-$result = Coupons::redeem('SAVE20', new Money(5000, 'EUR'), redeemer: $user);
+$result = Coupons::redeem('SAVE20', Money::ofMinor(5000, 'EUR'), redeemer: $user);
 
-$result->discount;      // Money saved off the price
+$result->discount;      // Money saved off the price — never more than the price
 $result->total;         // new total after the discount
 $result->freeShipping;  // true for a free-shipping coupon — zero your own shipping line
 
 // Fluent equivalent on the model (redeemer may be null for guest checkout):
-$result = $coupon->redeemBy($user, new Money(5000, 'EUR'));
+$result = $coupon->redeemBy($user, Money::ofMinor(5000, 'EUR'));
 ```
 
 On failure it throws a precise, catchable exception — all extend `CouponNotRedeemable`
@@ -231,9 +233,15 @@ try {
 ### Currency lock, minimum spend & per-redeemer caps
 
 ```php
-$coupon->currency;                 // null = any currency, or a locked ISO code
-$coupon->minimum_spend;            // null = no minimum, or a threshold in minor units
+$coupon->currency;                 // ?Currency — null = any currency, or the lock
+$coupon->minimum_spend;            // ?Money   — null = no minimum
+$coupon->max_discount;             // ?Money   — null = uncapped
 $coupon->max_usage_per_redeemer;   // 0 = unlimited per redeemer
+
+$coupon->discountFor($price);           // Money — 0 ≤ discount ≤ price, capped; throws money's
+                                        //         CurrencyMismatch on a locked mismatch
+$coupon->apply($price);                 // Money — the price minus the discount (never negative)
+$coupon->discount($currency);           // money Discount labelled with the code, for a DiscountStack
 
 $coupon->appliesToCurrency($price);     // bool
 $coupon->meetsMinimumSpend($price);     // bool
@@ -272,7 +280,7 @@ class User extends Authenticatable
 ```
 
 ```php
-$result  = $user->redeemCoupon('SAVE20', new Money(5000, 'EUR')); // RedemptionResult
+$result  = $user->redeemCoupon('SAVE20', Money::ofMinor(5000, 'EUR')); // RedemptionResult
 $history = $user->couponRedemptions;                              // morphMany history
 $used    = $user->hasRedeemed('SAVE20');                          // bool (tracked only)
 ```
@@ -332,10 +340,11 @@ writes, with assertion helpers:
 
 ```php
 use RoundlyConsulting\Coupons\Facades\Coupons;
+use RoundlyConsulting\Money\Money;
 
 $fake = Coupons::fake();
 
-Coupons::redeem('SAVE20', new Money(5000, 'EUR'), redeemer: $user);
+Coupons::redeem('SAVE20', Money::ofMinor(5000, 'EUR'), redeemer: $user);
 
 $fake->assertRedeemed('SAVE20');                                   // by code
 $fake->assertRedeemed('SAVE20', fn ($result) => /* ... */ true);   // by code + callback
@@ -353,7 +362,7 @@ $fake->assertCreated();
 
 ```php
 use RoundlyConsulting\Coupons\Models\Coupon;
-use RoundlyConsulting\Coupons\ValueObjects\Money;
+use RoundlyConsulting\Money\Money;
 
 $coupon = Coupon::query()->where('code', 'SAVE20')->firstOrFail();
 
@@ -369,10 +378,13 @@ $coupon->hasBeenUsedAtLeastOnce();
 $coupon->canBeApplied();         // active, not expired, not at max usage
 
 // Apply the coupon to a price.
-$discounted = $coupon->apply(new Money(5000, 'EUR')); // €40.00 for 20% off
+$discounted = $coupon->apply(Money::ofMinor(5000, 'EUR')); // €40.00 for 20% off
 ```
 
 ### Listening for events
+
+A free-shipping coupon's `discountFor()` is zero and `apply()` returns the price unchanged:
+free shipping is a flag (`$result->freeShipping`) the host applies to its own shipping line.
 
 The package dispatches these events the host app can listen to:
 
@@ -394,7 +406,7 @@ use RoundlyConsulting\Coupons\Events\CouponExhausted;
 Event::listen(function (CouponRedeemed $event): void {
     logger()->info('Coupon redeemed', [
         'code' => $event->coupon->code,
-        'discount' => $event->result->discount->getAmount(),
+        'discount' => (string) $event->result->discount, // "12.50 EUR"
     ]);
 });
 
@@ -424,7 +436,13 @@ only when a redeemer is supplied.
 
 ## Integrates with
 
-This package hard-requires one lower-tier roundly package (wired automatically):
+This package hard-requires two lower-tier roundly packages (wired automatically):
+
+- **[money-for-laravel](https://github.com/roundly-consulting/money-for-laravel)** — every
+  amount is its `Money`; a coupon's value becomes its `Discount` (fixed, percentage with
+  fractional basis points, free shipping, cap); `minimum_spend` / `max_discount` /
+  `amount_discounted` use its `AsMoney` casts and `$table->money()` columns (`decimal(38,0)`);
+  `Coupon::discount()` hands hosts a `Discount` to compose in a `DiscountStack`.
 
 - **[package-toolkit-for-laravel](https://github.com/roundly-consulting/package-toolkit-for-laravel)**
   — the service-provider builder (config, migrations, translations, commands and publish tags)
