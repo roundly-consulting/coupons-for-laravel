@@ -2,9 +2,12 @@
 
 declare(strict_types=1);
 
+use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Event;
 use RoundlyConsulting\Coupons\Actions\RedeemCouponAction;
 use RoundlyConsulting\Coupons\DataTransferObjects\CreateCouponData;
 use RoundlyConsulting\Coupons\DataTransferObjects\RedeemCouponData;
+use RoundlyConsulting\Coupons\Events\CouponRevoked;
 use RoundlyConsulting\Coupons\Exceptions\CouponAtMaxUsage;
 use RoundlyConsulting\Coupons\Facades\Coupons;
 use RoundlyConsulting\Coupons\Tests\Fixtures\CustomCoupon;
@@ -89,6 +92,45 @@ it('enforces the usage cap through the swapped model', function (): void {
         ->toThrow(CouponAtMaxUsage::class)
         ->and(CustomCoupon::query()->where('code', 'CAPSWAP')->value('usage'))->toBe(1);
 });
+
+/**
+ * The console commands are call sites too, and both used to query the packaged Coupon
+ * directly — the shops #3 shape. Same table, so the rows still changed, but as the wrong
+ * class: the host's model events and overrides never ran. The models each command acts on
+ * are collected from what it fires — CouponRevoked for expire, the Eloquent `deleted`
+ * event for prune — so the class under test is the one the command really hydrated.
+ */
+it('expires coupons through the swapped model', function (): void {
+    expect('coupons.model')->toHonourModelSwap(CustomCoupon::class, function (): array {
+        createActiveCoupon('EXPIRESWAP');
+
+        $revoked = [];
+        Event::listen(CouponRevoked::class, function (CouponRevoked $event) use (&$revoked): void {
+            $revoked[] = $event->coupon;
+        });
+
+        Artisan::call('coupons:expire');
+
+        return $revoked;
+    });
+});
+
+it('prunes coupons through the swapped model', function (bool $force): void {
+    expect('coupons.model')->toHonourModelSwap(CustomCoupon::class, function () use ($force): array {
+        createActiveCoupon('PRUNESWAP')->update(['expires_at' => now()->subDays(40)]);
+
+        $deleted = [];
+        Event::listen('eloquent.deleted: *', function (string $event, array $payload) use (&$deleted): void {
+            $deleted[] = $payload[0];
+        });
+
+        Artisan::call('coupons:prune', ['--days' => 30, '--force' => $force]);
+
+        return $deleted;
+    });
+
+    expect(CustomCoupon::withTrashed()->where('code', 'PRUNESWAP')->exists())->toBe(! $force);
+})->with(['soft delete' => false, 'force delete' => true]);
 
 // The structural half of the seam — Coupon is non-final, and `coupons.model` really
 // defaults to the packaged model — is pinned once in tests/Unit/ArchTest.php by

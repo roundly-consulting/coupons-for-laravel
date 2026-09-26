@@ -58,6 +58,31 @@ ArchPresets::noLocalCryptoPrimitives('RoundlyConsulting\Coupons');
 ArchPresets::modelsResolveThroughSeam(__DIR__.'/../../src', 'Support');
 
 /**
+ * `modelsResolveThroughSeam` bans `static::query()` / `new static`, but not a call site
+ * naming the packaged class outright — which is how both console commands bypassed
+ * `coupons.model` while every other path honoured it. This pins that shape too. The
+ * recording fake is exempt: it is DB-free and never hydrates host rows.
+ */
+it('never queries the packaged coupon model directly', function (): void {
+    $offenders = [];
+
+    foreach (couponsPhpFilesIn(__DIR__.'/../../src') as $file) {
+        if (str_contains($file->getPathname(), '/Testing/')) {
+            continue;
+        }
+
+        // Comments stripped: docblocks legitimately name `Coupon::isRedeemableBy()`.
+        $contents = php_strip_whitespace($file->getPathname());
+
+        if (preg_match('/\bCoupon::(?!class\b)[a-zA-Z]+\(/', $contents) === 1) {
+            $offenders[] = $file->getBasename();
+        }
+    }
+
+    expect($offenders)->toBe([]);
+});
+
+/**
  * The morph-key seam, guarded. Coupons migrated its redemption morph column off raw
  * `$table->morphs()` onto `morphKey($name, KeyType::…)` so a uuid/ulid host can flip its
  * whole graph coherently — a hardcoded bigint id breaks those hosts on Postgres, and SQLite

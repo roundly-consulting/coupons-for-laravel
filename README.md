@@ -71,7 +71,7 @@ return [
 
 | Key | Type | Default | Env | Purpose |
 |---|---|---|---|---|
-| `model` | `class-string` | `RoundlyConsulting\Coupons\Models\Coupon` | — | Coupon model. Point it at your own subclass to extend behaviour. |
+| `model` | `class-string` | `RoundlyConsulting\Coupons\Models\Coupon` | — | Coupon model. Point it at your own subclass to extend behaviour; the manager, actions and both console commands all use it. |
 | `default_currency` | `string` | `USD` | `COUPONS_CURRENCY` | ISO 4217 code assumed when one is not given explicitly. |
 | `redeemer.track` | `bool` | `true` | `COUPONS_TRACK_REDEEMERS` | Record a `coupon_redemptions` row per redeemer (powers per-redeemer caps). |
 | `code.length` | `int` | `6` | `COUPONS_CODE_LENGTH` | Length of auto-generated codes, `4`–`64`. |

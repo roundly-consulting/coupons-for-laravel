@@ -6,7 +6,7 @@ namespace RoundlyConsulting\Coupons\Commands;
 
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Command;
-use RoundlyConsulting\Coupons\Models\Coupon;
+use RoundlyConsulting\Coupons\Support\CouponModel;
 
 final class PruneCouponsCommand extends Command
 {
@@ -23,7 +23,7 @@ final class PruneCouponsCommand extends Command
 
         $pruned = 0;
 
-        Coupon::query()
+        CouponModel::class()::query()
             ->whereNotNull('expires_at')
             ->where('expires_at', '<=', $threshold)
             ->chunkById(100, function ($coupons) use ($force, &$pruned): void {

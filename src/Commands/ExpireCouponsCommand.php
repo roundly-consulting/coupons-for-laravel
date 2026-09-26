@@ -8,7 +8,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Console\Command;
 use Illuminate\Support\Collection;
 use RoundlyConsulting\Coupons\Actions\RevokeCouponAction;
-use RoundlyConsulting\Coupons\Models\Coupon;
+use RoundlyConsulting\Coupons\Support\CouponModel;
 
 final class ExpireCouponsCommand extends Command
 {
@@ -24,7 +24,7 @@ final class ExpireCouponsCommand extends Command
     {
         $code = $this->option('code');
 
-        $query = Coupon::query()
+        $query = CouponModel::class()::query()
             ->where(function ($query): void {
                 $query->whereNull('expires_at')->orWhere('expires_at', '>', CarbonImmutable::now());
             });

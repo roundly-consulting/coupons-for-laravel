@@ -18,6 +18,8 @@ place rather than evolved with a follow-up migration. Re-run migrations on a fre
 - `coupons:expire` now revokes each coupon through the new `RevokeCouponAction` (shared with
   `Coupons::revoke()`), so `CouponRevoked` fires once per expired coupon; it was a silent bulk
   update.
+- `coupons:expire` and `coupons:prune` now resolve the model from `coupons.model` (they queried
+  the packaged `Coupon`, so a host subclass's model events and overrides never ran).
 
 ### Changed — money-for-laravel
 
