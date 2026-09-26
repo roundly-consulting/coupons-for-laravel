@@ -332,6 +332,7 @@ bind by primary key).
 
 ```bash
 # Immediately expire coupons (admin kill-switch). --code limits it to one coupon.
+# Each one is revoked like Coupons::revoke(): CouponRevoked fires per coupon.
 php artisan coupons:expire
 php artisan coupons:expire --code=SAVE20
 
@@ -401,7 +402,7 @@ The package dispatches these events the host app can listen to:
 | `CouponRedeemed` | a redemption succeeds | `Coupon $coupon`, `RedemptionResult $result` |
 | `CouponRedemptionFailed` | a redemption attempt is rejected | `string $code`, `RedemptionFailureReason $reason`, `?Model $redeemer` |
 | `CouponExhausted` | a redemption consumes the final available use (fires **once**) | `Coupon $coupon` |
-| `CouponRevoked` | a coupon is revoked via `Coupons::revoke()` | `Coupon $coupon` |
+| `CouponRevoked` | a coupon is revoked via `Coupons::revoke()` or `coupons:expire` (once per coupon) | `Coupon $coupon` |
 
 ```php
 use Illuminate\Support\Facades\Event;

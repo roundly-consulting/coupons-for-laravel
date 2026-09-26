@@ -15,6 +15,9 @@ place rather than evolved with a follow-up migration. Re-run migrations on a fre
   bad value throws `InvalidCouponConfiguration`. The alphabet is used as given — no more
   uppercasing. Generation now also skips codes held by soft-deleted coupons and gives up after
   10 collisions instead of looping forever.
+- `coupons:expire` now revokes each coupon through the new `RevokeCouponAction` (shared with
+  `Coupons::revoke()`), so `CouponRevoked` fires once per expired coupon; it was a silent bulk
+  update.
 
 ### Changed — money-for-laravel
 

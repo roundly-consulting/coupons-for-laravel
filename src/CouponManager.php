@@ -8,11 +8,11 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use RoundlyConsulting\Coupons\Actions\CreateCouponAction;
 use RoundlyConsulting\Coupons\Actions\RedeemCouponAction;
+use RoundlyConsulting\Coupons\Actions\RevokeCouponAction;
 use RoundlyConsulting\Coupons\DataTransferObjects\CreateCouponData;
 use RoundlyConsulting\Coupons\DataTransferObjects\RedeemCouponData;
 use RoundlyConsulting\Coupons\DataTransferObjects\RedemptionResult;
 use RoundlyConsulting\Coupons\Enums\DiscountType;
-use RoundlyConsulting\Coupons\Events\CouponRevoked;
 use RoundlyConsulting\Coupons\Exceptions\CouponNotFound;
 use RoundlyConsulting\Coupons\Facades\Coupons;
 use RoundlyConsulting\Coupons\Models\Coupon;
@@ -88,13 +88,9 @@ class CouponManager
      */
     public function revoke(string $code): Coupon
     {
-        $coupon = $this->findOrFail($code);
-
-        $coupon->expire()->save();
-
-        CouponRevoked::dispatch($coupon);
-
-        return $coupon;
+        // Resolved here rather than injected: the constructor is extended by hosts'
+        // and the package's own fakes, so it stays as it is.
+        return app(RevokeCouponAction::class)->execute($this->findOrFail($code));
     }
 
     /**

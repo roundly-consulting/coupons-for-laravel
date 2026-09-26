@@ -6,6 +6,8 @@ namespace RoundlyConsulting\Coupons\Commands;
 
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Command;
+use Illuminate\Support\Collection;
+use RoundlyConsulting\Coupons\Actions\RevokeCouponAction;
 use RoundlyConsulting\Coupons\Models\Coupon;
 
 final class ExpireCouponsCommand extends Command
@@ -14,7 +16,11 @@ final class ExpireCouponsCommand extends Command
 
     protected $description = 'Immediately expire coupons (an admin kill-switch).';
 
-    public function handle(): int
+    /**
+     * Each coupon is revoked like `Coupons::revoke()` does it, so CouponRevoked fires
+     * per coupon. chunkById is safe while the filtered column changes under it.
+     */
+    public function handle(RevokeCouponAction $revoke): int
     {
         $code = $this->option('code');
 
@@ -27,7 +33,14 @@ final class ExpireCouponsCommand extends Command
             $query->where('code', $code);
         }
 
-        $count = $query->update(['expires_at' => CarbonImmutable::now()]);
+        $count = 0;
+
+        $query->chunkById(100, function (Collection $coupons) use ($revoke, &$count): void {
+            foreach ($coupons as $coupon) {
+                $revoke->execute($coupon);
+                $count++;
+            }
+        });
 
         $this->info("Expired {$count} coupon(s).");
 
