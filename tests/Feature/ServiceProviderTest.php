@@ -74,6 +74,15 @@ it('contributes a coupons section to about', function (string $expected): void {
     'Route key',
 ]);
 
+it('flags an unusable code format in about instead of failing', function (): void {
+    config()->set('coupons.code.charset', 'AABB');
+
+    $this->artisan('about --only=coupons')
+        ->expectsOutputToContain('INVALID')
+        ->doesntExpectOutputToContain('AABB')
+        ->assertExitCode(0);
+});
+
 it('reports the code alphabet by size and never prints it', function (): void {
     config()->set('coupons.code.charset', 'ABCDEF');
     config()->set('coupons.code.length', 8);

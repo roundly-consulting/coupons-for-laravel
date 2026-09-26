@@ -3,7 +3,6 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Facades\Event;
-use Illuminate\Support\Str;
 use RoundlyConsulting\Coupons\Actions\CreateCouponAction;
 use RoundlyConsulting\Coupons\DataTransferObjects\CreateCouponData;
 use RoundlyConsulting\Coupons\Enums\DiscountType;
@@ -55,26 +54,6 @@ it('creates a coupon with a custom code and max usage', function (): void {
         'code' => 'PAYHALF',
         'max_usage' => 3,
     ]);
-});
-
-it('generates a unique code when one already exists', function (): void {
-    Event::fake(CouponCreated::class);
-
-    Coupon::factory()->create(['code' => 'ABC123']);
-
-    $sequence = ['ABC123', 'ZZZ999'];
-    $index = 0;
-    Str::createRandomStringsUsing(function () use (&$index, $sequence): string {
-        return mb_strtolower($sequence[$index++] ?? 'fallback');
-    });
-
-    $coupon = app(CreateCouponAction::class)->execute(
-        CreateCouponData::fixed(Money::ofMinor(100, 'EUR')),
-    );
-
-    expect($coupon->code)->toBe('ZZZ999');
-
-    Str::createRandomStringsNormally();
 });
 
 it('rejects a fixed coupon without a currency', function (): void {

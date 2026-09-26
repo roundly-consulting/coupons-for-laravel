@@ -74,11 +74,18 @@ return [
 | `model` | `class-string` | `RoundlyConsulting\Coupons\Models\Coupon` | — | Coupon model. Point it at your own subclass to extend behaviour. |
 | `default_currency` | `string` | `USD` | `COUPONS_CURRENCY` | ISO 4217 code assumed when one is not given explicitly. |
 | `redeemer.track` | `bool` | `true` | `COUPONS_TRACK_REDEEMERS` | Record a `coupon_redemptions` row per redeemer (powers per-redeemer caps). |
-| `code.length` | `int` | `6` | `COUPONS_CODE_LENGTH` | Length of auto-generated codes. |
-| `code.charset` | `string` | `A–Z0–9` | `COUPONS_CODE_CHARSET` | Alphabet for auto-generated codes. |
+| `code.length` | `int` | `6` | `COUPONS_CODE_LENGTH` | Length of auto-generated codes, `4`–`64`. |
+| `code.charset` | `string` | `A–Z0–9` | `COUPONS_CODE_CHARSET` | Alphabet for auto-generated codes, used exactly as given (case included): at least 2 distinct symbols, no whitespace or control characters. Multibyte symbols are fine. |
 | `route_key` | `string` | `code` | `COUPONS_ROUTE_KEY` | Column used for route-model binding of `{coupon}`. Set to `id` to bind by primary key. |
 
 The package ships sensible defaults and works with zero configuration.
+
+Generated codes draw every symbol from a cryptographically secure source. The `code.*` keys
+are validated whenever a code is generated: an out-of-range length or an unusable alphabet
+throws `InvalidCouponConfiguration` (a `CouponException`) naming the key, never its value.
+A generated code is checked against every existing coupon, soft-deleted ones included; if 10
+candidates in a row are taken, the code space is too small and the same exception tells you
+to widen it (or pass an explicit code). Explicit codes are never checked against the format.
 
 ### Money, units & the currency lock
 

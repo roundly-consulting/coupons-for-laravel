@@ -91,6 +91,8 @@ arch('src uses only allowed namespaces')
         'Carbon',
         'Closure',
         'RuntimeException',
+        // PHP's Randomizer (CSPRNG engine by default) draws generated code symbols.
+        'Random\Randomizer',
         // native/framework helpers used unqualified
         'app',
         'class_basename',

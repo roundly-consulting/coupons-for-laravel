@@ -7,6 +7,15 @@ All notable changes to `coupons-for-laravel` will be documented in this file.
 Pre-1.0: the package is unreleased, so the `create_coupons_table` migration was edited in
 place rather than evolved with a follow-up migration. Re-run migrations on a fresh database.
 
+### Fixed
+
+- `coupons.code.length` / `coupons.code.charset` now drive generated codes (they were only
+  shown by `about`; codes were always 6 uppercase letters/digits). Both are validated on use
+  (length 4–64; an alphabet of 2+ distinct symbols, no whitespace/control characters) and a
+  bad value throws `InvalidCouponConfiguration`. The alphabet is used as given — no more
+  uppercasing. Generation now also skips codes held by soft-deleted coupons and gives up after
+  10 collisions instead of looping forever.
+
 ### Changed — money-for-laravel
 
 - Every amount is `RoundlyConsulting\Money\Money` (money-for-laravel, now required, with

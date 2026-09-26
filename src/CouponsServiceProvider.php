@@ -6,6 +6,7 @@ namespace RoundlyConsulting\Coupons;
 
 use RoundlyConsulting\Coupons\Commands\ExpireCouponsCommand;
 use RoundlyConsulting\Coupons\Commands\PruneCouponsCommand;
+use RoundlyConsulting\Coupons\Support\CodeFormat;
 use RoundlyConsulting\Coupons\Support\CouponModel;
 use RoundlyConsulting\Coupons\Support\RedemptionGuard;
 use RoundlyConsulting\PackageToolkit\Concerns\RegistersBlueprintMacros;
@@ -33,7 +34,7 @@ final class CouponsServiceProvider extends PackageServiceProvider
                 'Redeemer tracking' => config('coupons.redeemer.track', true) === true ? 'ON' : 'OFF',
                 // The alphabet is reported by size only: printing it would hand a
                 // brute-forcer the exact key space generated codes are drawn from.
-                'Generated codes' => self::codeFormat(),
+                'Generated codes' => CodeFormat::describe(),
                 'Route key' => self::routeKey(),
             ]);
     }
@@ -60,14 +61,6 @@ final class CouponsServiceProvider extends PackageServiceProvider
         $currency = config('coupons.default_currency', 'USD');
 
         return is_string($currency) && $currency !== '' ? $currency : 'USD';
-    }
-
-    private static function codeFormat(): string
-    {
-        $charset = config('coupons.code.charset', '');
-        $length = (int) config('coupons.code.length', 6);
-
-        return $length.' chars from a '.mb_strlen(is_string($charset) ? $charset : '').'-symbol alphabet';
     }
 
     private static function routeKey(): string
