@@ -18,7 +18,7 @@ use RoundlyConsulting\Money\Money;
  * @property int $id
  * @property int $coupon_id
  * @property ?string $redeemer_type
- * @property ?int $redeemer_id
+ * @property int|string|null $redeemer_id
  * @property Money $amount_discounted
  * @property string $currency
  * @property ?CarbonInterface $created_at
@@ -46,7 +46,7 @@ final class CouponRedemption extends Model
     {
         return [
             'coupon_id' => 'integer',
-            'redeemer_id' => 'integer',
+            // No cast on redeemer_id: `coupons.key_type` may make it a uuid/ulid string.
             'amount_discounted' => AsMoney::currencyColumn('currency'),
         ];
     }
