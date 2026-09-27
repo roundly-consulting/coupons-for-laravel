@@ -370,15 +370,12 @@ Coupons::redeem('SAVE20', Money::ofMinor(5000, 'EUR'), redeemer: $user);
 
 $fake->assertRedeemed('SAVE20');                                   // by code
 $fake->assertRedeemed('SAVE20', fn ($result) => /* ... */ true);   // by code + callback
+$fake->assertRedeemed(callback: fn ($result) => /* ... */ true);   // by callback only
 $fake->assertNotRedeemed('OTHER');
 $fake->assertRedemptionFailed('OLD', 'expired');                   // reason optional
 $fake->assertNothingRedeemed();
 $fake->assertCreated();
 ```
-
-> **Note:** `assertRedeemed()` now takes the coupon code as its first argument. The legacy
-> callback-only form (`assertRedeemed(fn ($result) => ...)`) still works for backward
-> compatibility.
 
 ### Working with a coupon
 

@@ -24,7 +24,7 @@ it('swaps the binding and records without touching the database', function (): v
     $fake->assertCreated();
     $fake->assertRedeemed();
     $fake->assertCreated(fn (Coupon $c): bool => $c->code === 'FAKED');
-    $fake->assertRedeemed(fn ($result): bool => $result->coupon->code === 'FAKED');
+    $fake->assertRedeemed(callback: fn ($result): bool => $result->coupon->code === 'FAKED');
 });
 
 it('asserts nothing was redeemed', function (): void {
@@ -106,11 +106,11 @@ it('does not match a failure recorded for a different code', function (): void {
     $fake->assertRedemptionFailed('SOMETHING-ELSE');
 })->throws(AssertionFailedError::class);
 
-it('supports the legacy callback-only assertRedeemed signature', function (): void {
+it('asserts a redemption by callback only', function (): void {
     $fake = Coupons::fake();
     Coupons::redeem('SAVE', Money::ofMinor(1000, 'USD'));
 
-    $fake->assertRedeemed(fn ($result): bool => $result->coupon->code === 'SAVE');
+    $fake->assertRedeemed(callback: fn ($result): bool => $result->coupon->code === 'SAVE');
 });
 
 it('creates quietly on the fake', function (): void {

@@ -120,18 +120,11 @@ final class FakeCouponManager extends CouponManager
     }
 
     /**
-     * Assert a coupon was redeemed. The preferred form takes the coupon code; for
-     * backward compatibility a callable passed as the first argument is treated as
-     * the legacy callback-only signature.
+     * Assert a coupon was redeemed — any redemption, one with the given code, and/or
+     * one the callback accepts (`assertRedeemed(callback: fn ($result) => …)`).
      */
-    public function assertRedeemed(string|callable|null $code = null, ?callable $callback = null): void
+    public function assertRedeemed(?string $code = null, ?callable $callback = null): void
     {
-        // Legacy shape: assertRedeemed($callback).
-        if (is_callable($code)) {
-            $callback = $code;
-            $code = null;
-        }
-
         if ($code === null && $callback === null) {
             Assert::assertNotEmpty($this->redeemed, 'Expected a coupon to be redeemed, but none were.');
 
