@@ -51,6 +51,15 @@ Initial public release.
 - `CouponManager` takes the container in its constructor and resolves each action on call.
 - The fake is now `Testing\CouponsFake` (was `FakeCouponManager`) and is created by the
   facade's own `Coupons::fake()`. `CouponManager::fake()` is removed.
+- Coupon codes are case-insensitive: stored trimmed and upper-cased, and matched the same way by
+  every lookup (`find()`, `check()`, `redeem()`, the rule, `whereCode()`, route binding). The
+  `code.charset` alphabet is upper-cased too and may not repeat a symbol case-insensitively.
+- A code is unique among coupons that are not soft-deleted (a unique index on the generated
+  `undeleted_code` column), so a pruned coupon's code can be issued again. A taken explicit code
+  throws `CouponCodeTaken` instead of a raw database error.
+- **Breaking:** `HasCoupons::redeemCoupon()` requires the cart total.
+- `CouponCreated`, `CouponRedeemed`, `CouponExhausted` and `CouponRevoked` implement
+  `ShouldDispatchAfterCommit`.
 
 ### Fixed
 
@@ -60,3 +69,19 @@ Initial public release.
   the real manager would have rejected.
 - `coupons:prune --force` never purged coupons that an earlier soft prune had trashed.
 - `coupons:prune --days=<negative>` deleted coupons that were still live. It is now refused.
+- Code lookup and uniqueness depended on the database collation (`summer` missed `SUMMER` on
+  SQLite and PostgreSQL but matched on MySQL), and a pasted ` SUMMER ` matched nowhere.
+- A code soft-deleted by `coupons:prune` could never be used again.
+- The fake reported a seeded, never-activated coupon as redeemable, and its `redeem()` always
+  returned a zero discount and the full price.
+- `coupons.redeemer.track` only counted the exact `true`, so `COUPONS_TRACK_REDEEMERS=1` turned
+  tracking — and per-redeemer caps — off.
+- `redeemCoupon()` without a cart total threw `CurrencyMismatch` for a fixed coupon outside
+  `default_currency`, and otherwise burned a use at a zero discount.
+- Redemption locked the coupon row inside a transaction on the default connection, not the
+  coupon model's, so a `coupons.model` on another connection held no lock.
+- A blank explicit code was accepted; `check('')` and `redeem('')` disagreed about it.
+- For a soft-deleted `Coupon` instance, `check()` and `isRedeemableBy()` said redeemable while
+  `redeem()` threw `CouponNotFound`.
+- `coupons:prune --days=thirty` read the window as 0 and pruned every expired coupon.
+- Redemption events fired inside the transaction, so a host rollback still announced them.
