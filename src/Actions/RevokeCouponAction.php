@@ -9,10 +9,11 @@ use RoundlyConsulting\Coupons\Models\Coupon;
 
 /**
  * Revoke a coupon: expire it now and fire CouponRevoked. The one path both
- * `Coupons::revoke()` and `coupons:expire` go through, so listeners hear about every
- * revocation. Reversible — the row is kept, only expires_at is set.
+ * `Coupons::revoke()` and `Coupons::expireAll()` (`coupons:expire`) go through, so
+ * listeners hear about every revocation. Reversible — the row is kept, only expires_at
+ * is set.
  */
-final class RevokeCouponAction
+final readonly class RevokeCouponAction
 {
     public function execute(Coupon $coupon): Coupon
     {

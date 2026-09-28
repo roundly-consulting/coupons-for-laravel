@@ -4,28 +4,40 @@ declare(strict_types=1);
 
 namespace RoundlyConsulting\Coupons;
 
+use Illuminate\Contracts\Container\Container;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use InvalidArgumentException;
+use RoundlyConsulting\Coupons\Actions\CheckCouponAction;
 use RoundlyConsulting\Coupons\Actions\CreateCouponAction;
+use RoundlyConsulting\Coupons\Actions\ExpireCouponsAction;
+use RoundlyConsulting\Coupons\Actions\PruneCouponsAction;
 use RoundlyConsulting\Coupons\Actions\RedeemCouponAction;
 use RoundlyConsulting\Coupons\Actions\RevokeCouponAction;
 use RoundlyConsulting\Coupons\DataTransferObjects\CreateCouponData;
 use RoundlyConsulting\Coupons\DataTransferObjects\RedeemCouponData;
 use RoundlyConsulting\Coupons\DataTransferObjects\RedemptionResult;
 use RoundlyConsulting\Coupons\Enums\DiscountType;
+use RoundlyConsulting\Coupons\Enums\RedemptionFailureReason;
 use RoundlyConsulting\Coupons\Exceptions\CouponNotFound;
-use RoundlyConsulting\Coupons\Facades\Coupons;
+use RoundlyConsulting\Coupons\Handles\CouponCode;
 use RoundlyConsulting\Coupons\Models\Coupon;
 use RoundlyConsulting\Coupons\Support\CouponModel;
-use RoundlyConsulting\Coupons\Testing\FakeCouponManager;
 use RoundlyConsulting\Money\Currency;
 use RoundlyConsulting\Money\Money;
 
+/**
+ * The root of the `Coupons` facade, injectable on its own. Every mutation is one flat verb
+ * that resolves its action from the container; `code()`, the Coupon model and the
+ * HasCoupons trait all delegate here, so `Coupons::fake()` sees every call.
+ *
+ * Not final: `Coupons::fake()` swaps in CouponsFake, a subtype, so constructor-injected
+ * managers keep type-checking under the fake.
+ */
 class CouponManager
 {
     public function __construct(
-        private readonly CreateCouponAction $createCoupon,
-        private readonly RedeemCouponAction $redeemCoupon,
+        protected readonly Container $container,
     ) {}
 
     /**
@@ -46,7 +58,7 @@ class CouponManager
 
     public function create(CreateCouponData $data): Coupon
     {
-        return $this->createCoupon->execute($data);
+        return $this->container->make(CreateCouponAction::class)->execute($data);
     }
 
     /**
@@ -54,12 +66,28 @@ class CouponManager
      */
     public function createQuietly(CreateCouponData $data): Coupon
     {
-        return $this->createCoupon->execute($data, quiet: true);
+        return $this->container->make(CreateCouponAction::class)->execute($data, quiet: true);
     }
 
     public function find(string $code): ?Coupon
     {
         return $this->newQuery()->where('code', $code)->first();
+    }
+
+    /**
+     * @throws CouponNotFound when no coupon matches the code.
+     */
+    public function findOrFail(string $code): Coupon
+    {
+        return $this->find($code) ?? throw CouponNotFound::forCode($code);
+    }
+
+    /**
+     * Whether a coupon with the given code exists.
+     */
+    public function exists(string $code): bool
+    {
+        return $this->newQuery()->whereCode($code)->exists();
     }
 
     /**
@@ -73,32 +101,33 @@ class CouponManager
     }
 
     /**
-     * Whether a coupon with the given code exists.
+     * One coupon, by code or model: `check()`, `preview()`, `redeem()` and `revoke()` it.
      */
-    public function exists(string $code): bool
+    public function code(Coupon|string $coupon): CouponCode
     {
-        return $this->newQuery()->whereCode($code)->exists();
+        return new CouponCode($this, $coupon);
     }
 
     /**
-     * Revoke a coupon by expiring it immediately. This is reversible — the row is
-     * not deleted, only its expires_at is set to now — and fires CouponRevoked.
+     * Why the coupon would be refused right now — the first failing reason in redemption
+     * order — or null when it is redeemable. Never throws; an unknown code reports NotFound.
+     * Pass a price to also check the currency lock and minimum spend, and a redeemer to
+     * check the per-redeemer cap.
+     */
+    public function check(Coupon|string $coupon, ?Money $price = null, ?Model $redeemer = null): ?RedemptionFailureReason
+    {
+        return $this->container->make(CheckCouponAction::class)->execute($coupon, $price, $redeemer);
+    }
+
+    /**
+     * The discount the coupon would take off the price, without redeeming it — zero on a
+     * currency mismatch, so it is safe to render.
      *
-     * @throws CouponNotFound when no coupon matches the code.
+     * @throws CouponNotFound when the code resolves to no coupon.
      */
-    public function revoke(string $code): Coupon
+    public function preview(Coupon|string $coupon, Money $price): Money
     {
-        // Resolved here rather than injected: the constructor is extended by hosts'
-        // and the package's own fakes, so it stays as it is.
-        return app(RevokeCouponAction::class)->execute($this->findOrFail($code));
-    }
-
-    /**
-     * @throws CouponNotFound when no coupon matches the code.
-     */
-    public function findOrFail(string $code): Coupon
-    {
-        return $this->find($code) ?? throw CouponNotFound::forCode($code);
+        return $this->resolve($coupon)->previewDiscount($price);
     }
 
     /**
@@ -107,29 +136,48 @@ class CouponManager
      */
     public function redeem(Coupon|string $coupon, Money $price, ?Model $redeemer = null): RedemptionResult
     {
-        return $this->redeemCoupon->execute(
+        return $this->container->make(RedeemCouponAction::class)->execute(
             new RedeemCouponData(coupon: $coupon, price: $price, redeemer: $redeemer),
         );
     }
 
     /**
-     * Swap the container binding for a fake that records calls without touching
-     * the database, and return it for assertions.
+     * Revoke a coupon by expiring it immediately. This is reversible — the row is
+     * not deleted, only its expires_at is set to now — and fires CouponRevoked.
+     *
+     * @throws CouponNotFound when no coupon matches the code.
      */
-    public function fake(): FakeCouponManager
+    public function revoke(Coupon|string $coupon): Coupon
     {
-        $fake = new FakeCouponManager(
-            $this->createCoupon,
-            $this->redeemCoupon,
-        );
+        return $this->container->make(RevokeCouponAction::class)->execute($this->resolve($coupon));
+    }
 
-        app()->instance(self::class, $fake);
+    /**
+     * Revoke every live coupon — or only the live one holding `$code` — and return how many
+     * were revoked. CouponRevoked fires once per coupon. Backs `coupons:expire`.
+     */
+    public function expireAll(?string $code = null): int
+    {
+        return $this->container->make(ExpireCouponsAction::class)->execute($code);
+    }
 
-        // Drop any instance the Coupons facade has already resolved so calls
-        // through the facade hit the fake from here on.
-        Coupons::clearResolvedInstance(self::class);
+    /**
+     * Delete coupons that expired more than `$days` days ago — soft by default, permanently
+     * with `$force` — and return how many were pruned. Backs `coupons:prune`.
+     *
+     * @throws InvalidArgumentException when `$days` is negative.
+     */
+    public function prune(int $days = 30, bool $force = false): int
+    {
+        return $this->container->make(PruneCouponsAction::class)->execute($days, $force);
+    }
 
-        return $fake;
+    /**
+     * @throws CouponNotFound when no coupon matches the code.
+     */
+    private function resolve(Coupon|string $coupon): Coupon
+    {
+        return $coupon instanceof Coupon ? $coupon : $this->findOrFail($coupon);
     }
 
     /**

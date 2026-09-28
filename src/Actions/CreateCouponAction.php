@@ -15,7 +15,7 @@ use RoundlyConsulting\Coupons\Support\CodeFormat;
 use RoundlyConsulting\Coupons\Support\CouponModel;
 use RoundlyConsulting\Money\Exceptions\CurrencyMismatch;
 
-final class CreateCouponAction
+final readonly class CreateCouponAction
 {
     /**
      * How many candidates to try before giving up: a collision this persistent means the

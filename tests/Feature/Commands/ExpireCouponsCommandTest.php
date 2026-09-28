@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Illuminate\Support\Facades\Event;
 use RoundlyConsulting\Coupons\Events\CouponRevoked;
+use RoundlyConsulting\Coupons\Facades\Coupons;
 use RoundlyConsulting\Coupons\Models\Coupon;
 
 it('expires all active coupons', function (): void {
@@ -87,4 +88,12 @@ it('expires coupons scheduled to expire later', function (): void {
         ->assertSuccessful();
 
     expect($later->fresh()->isExpired())->toBeTrue();
+});
+
+it('runs through the manager, so the fake records it', function (): void {
+    $fake = Coupons::fake();
+
+    $this->artisan('coupons:expire', ['--code' => 'A'])->assertSuccessful();
+
+    $fake->assertExpiredAll();
 });

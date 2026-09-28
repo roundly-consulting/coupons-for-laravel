@@ -24,10 +24,10 @@ use RoundlyConsulting\Coupons\Support\CouponModel;
 use RoundlyConsulting\Coupons\Support\RedemptionGuard;
 use RoundlyConsulting\Money\Money;
 
-final class RedeemCouponAction
+final readonly class RedeemCouponAction
 {
     public function __construct(
-        private readonly RedemptionGuard $guard,
+        private RedemptionGuard $guard,
     ) {}
 
     /**

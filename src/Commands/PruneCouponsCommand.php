@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace RoundlyConsulting\Coupons\Commands;
 
-use Carbon\CarbonImmutable;
 use Illuminate\Console\Command;
-use RoundlyConsulting\Coupons\Support\CouponModel;
+use InvalidArgumentException;
+use RoundlyConsulting\Coupons\CouponManager;
 
 final class PruneCouponsCommand extends Command
 {
@@ -15,23 +15,18 @@ final class PruneCouponsCommand extends Command
 
     protected $description = 'Prune coupons that expired more than the given number of days ago.';
 
-    public function handle(): int
+    /**
+     * `Coupons::prune()`. A negative window is refused rather than reaching into the future.
+     */
+    public function handle(CouponManager $coupons): int
     {
-        $days = (int) $this->option('days');
-        $force = (bool) $this->option('force');
-        $threshold = CarbonImmutable::now()->subDays($days);
+        try {
+            $pruned = $coupons->prune((int) $this->option('days'), (bool) $this->option('force'));
+        } catch (InvalidArgumentException $exception) {
+            $this->error($exception->getMessage());
 
-        $pruned = 0;
-
-        CouponModel::class()::query()
-            ->whereNotNull('expires_at')
-            ->where('expires_at', '<=', $threshold)
-            ->chunkById(100, function ($coupons) use ($force, &$pruned): void {
-                foreach ($coupons as $coupon) {
-                    $force ? $coupon->forceDelete() : $coupon->delete();
-                    $pruned++;
-                }
-            });
+            return self::FAILURE;
+        }
 
         $this->info("Pruned {$pruned} coupon(s).");
 

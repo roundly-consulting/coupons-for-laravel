@@ -4,11 +4,8 @@ declare(strict_types=1);
 
 namespace RoundlyConsulting\Coupons\Commands;
 
-use Carbon\CarbonImmutable;
 use Illuminate\Console\Command;
-use Illuminate\Support\Collection;
-use RoundlyConsulting\Coupons\Actions\RevokeCouponAction;
-use RoundlyConsulting\Coupons\Support\CouponModel;
+use RoundlyConsulting\Coupons\CouponManager;
 
 final class ExpireCouponsCommand extends Command
 {
@@ -17,30 +14,14 @@ final class ExpireCouponsCommand extends Command
     protected $description = 'Immediately expire coupons (an admin kill-switch).';
 
     /**
-     * Each coupon is revoked like `Coupons::revoke()` does it, so CouponRevoked fires
-     * per coupon. chunkById is safe while the filtered column changes under it.
+     * `Coupons::expireAll()`: each live coupon is revoked like `Coupons::revoke()` does it,
+     * so CouponRevoked fires per coupon.
      */
-    public function handle(RevokeCouponAction $revoke): int
+    public function handle(CouponManager $coupons): int
     {
         $code = $this->option('code');
 
-        $query = CouponModel::class()::query()
-            ->where(function ($query): void {
-                $query->whereNull('expires_at')->orWhere('expires_at', '>', CarbonImmutable::now());
-            });
-
-        if (is_string($code) && $code !== '') {
-            $query->where('code', $code);
-        }
-
-        $count = 0;
-
-        $query->chunkById(100, function (Collection $coupons) use ($revoke, &$count): void {
-            foreach ($coupons as $coupon) {
-                $revoke->execute($coupon);
-                $count++;
-            }
-        });
+        $count = $coupons->expireAll(is_string($code) && $code !== '' ? $code : null);
 
         $this->info("Expired {$count} coupon(s).");
 

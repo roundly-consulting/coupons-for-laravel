@@ -12,13 +12,11 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Collection;
-use RoundlyConsulting\Coupons\Actions\RedeemCouponAction;
+use RoundlyConsulting\Coupons\CouponManager;
 use RoundlyConsulting\Coupons\Database\Factories\CouponFactory;
-use RoundlyConsulting\Coupons\DataTransferObjects\RedeemCouponData;
 use RoundlyConsulting\Coupons\DataTransferObjects\RedemptionResult;
 use RoundlyConsulting\Coupons\Enums\DiscountType;
 use RoundlyConsulting\Coupons\Exceptions\InvalidCouponDefinition;
-use RoundlyConsulting\Coupons\Support\RedemptionGuard;
 use RoundlyConsulting\Money\Casts\AsCurrency;
 use RoundlyConsulting\Money\Casts\AsMoney;
 use RoundlyConsulting\Money\Currency;
@@ -340,13 +338,14 @@ class Coupon extends Model
     }
 
     /**
-     * Whether this coupon could be redeemed right now by the given redeemer, using
-     * the same shared guard the redemption action runs. Pass a price to also check
-     * currency and minimum spend; omit it to skip those checks. Never throws.
+     * Whether this coupon could be redeemed right now by the given redeemer — the same
+     * checks, in the same order, as redemption (`Coupons::check()` names the failing one).
+     * Pass a price to also check currency and minimum spend; omit it to skip those checks.
+     * Never throws.
      */
     public function isRedeemableBy(?Model $redeemer = null, ?Money $price = null): bool
     {
-        return app(RedemptionGuard::class)->firstFailure($this, $price, $redeemer) === null;
+        return app(CouponManager::class)->check($this, $price, $redeemer) === null;
     }
 
     /**
@@ -366,13 +365,11 @@ class Coupon extends Model
     /**
      * Redeem this coupon for the given redeemer and price: validates, increments
      * usage atomically, records a redemption row when tracking is on, and fires
-     * CouponRedeemed.
+     * CouponRedeemed. Goes through the manager, so `Coupons::fake()` records it.
      */
     public function redeemBy(?Model $redeemer, Money $price): RedemptionResult
     {
-        return app(RedeemCouponAction::class)->execute(
-            new RedeemCouponData(coupon: $this, price: $price, redeemer: $redeemer),
-        );
+        return app(CouponManager::class)->redeem($this, $price, $redeemer);
     }
 
     /**

@@ -22,7 +22,7 @@ ArchPresets::strictTypes('RoundlyConsulting\Coupons');
  *  - CouponException — the base every coupons error extends, so a host can catch uniformly;
  *  - CouponNotRedeemable — the intermediate base for every "why it was refused" cause, so
  *    a host can catch the whole not-redeemable surface with one type;
- *  - CouponManager — the package's own FakeCouponManager extends it, which is how
+ *  - CouponManager — the package's own CouponsFake extends it, which is how
  *    `Coupons::fake()` works. `final` here would break a feature this package ships.
  */
 ArchPresets::finalByDefault('RoundlyConsulting\Coupons', [
@@ -116,6 +116,7 @@ arch('src uses only allowed namespaces')
         'Carbon',
         'Closure',
         'RuntimeException',
+        'InvalidArgumentException',
         // PHP's Randomizer (CSPRNG engine by default) draws generated code symbols.
         'Random\Randomizer',
         // native/framework helpers used unqualified
@@ -127,7 +128,7 @@ arch('src uses only allowed namespaces')
         'dispatch',
         'fake',
     ])
-    // FakeCouponManager ships PHPUnit assertions for host-app tests.
+    // CouponsFake ships PHPUnit assertions for host-app tests.
     ->ignoring('PHPUnit\Framework\Assert');
 
 /**
@@ -198,3 +199,9 @@ function couponsPhpFilesIn(string $directory): array
 
     return $files;
 }
+
+/**
+ * The Coupon model and the HasCoupons trait redeem and check through CouponManager, never
+ * an action, so `Coupons::fake()` records model- and trait-made redemptions too.
+ */
+ArchPresets::modelsGoThroughTheFacade('RoundlyConsulting\Coupons');

@@ -7,8 +7,7 @@ namespace RoundlyConsulting\Coupons\Concerns;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
-use RoundlyConsulting\Coupons\Actions\RedeemCouponAction;
-use RoundlyConsulting\Coupons\DataTransferObjects\RedeemCouponData;
+use RoundlyConsulting\Coupons\CouponManager;
 use RoundlyConsulting\Coupons\DataTransferObjects\RedemptionResult;
 use RoundlyConsulting\Coupons\Models\Coupon;
 use RoundlyConsulting\Coupons\Models\CouponRedemption;
@@ -17,8 +16,8 @@ use RoundlyConsulting\Money\Money;
 /**
  * Gives a redeemer model (typically the host's User) first-class coupon
  * behaviour: a redemption history relation, a redeem method, and a redeemed
- * check. Redemption delegates to the same RedeemCouponAction the facade uses, so
- * there is no parallel redemption path.
+ * check. Redemption goes through the same CouponManager the facade uses, so there is
+ * no parallel redemption path and `Coupons::fake()` records it.
  *
  * @phpstan-require-extends Model
  */
@@ -44,11 +43,7 @@ trait HasCoupons
         /** @var string $currency */
         $currency = config('coupons.default_currency', 'USD');
 
-        return app(RedeemCouponAction::class)->execute(new RedeemCouponData(
-            coupon: $coupon,
-            price: $cartTotal ?? Money::zero($currency),
-            redeemer: $this,
-        ));
+        return app(CouponManager::class)->redeem($coupon, $cartTotal ?? Money::zero($currency), $this);
     }
 
     /**
