@@ -48,8 +48,9 @@ trait HasCoupons
     }
 
     /**
-     * Whether this redeemer has a recorded redemption of the given coupon code (matched
-     * case-insensitively). Only reflects tracked redemptions (coupons.redeemer.track = true).
+     * Whether this redeemer has a recorded redemption of the live coupon holding the given
+     * code (matched case-insensitively) — a pruned coupon that once held it does not count.
+     * Only reflects tracked redemptions (coupons.redeemer.track = true).
      */
     public function hasRedeemed(string $code): bool
     {

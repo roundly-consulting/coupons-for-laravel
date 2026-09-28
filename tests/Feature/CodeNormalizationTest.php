@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\Validator;
 use RoundlyConsulting\Coupons\Enums\DiscountType;
+use RoundlyConsulting\Coupons\Exceptions\CouponCodeTaken;
 use RoundlyConsulting\Coupons\Facades\Coupons;
 use RoundlyConsulting\Coupons\Models\Coupon;
 use RoundlyConsulting\Coupons\Rules\Redeemable;
@@ -72,7 +72,7 @@ it('binds a route parameter case-insensitively', function (): void {
 it('refuses a second coupon whose code differs only by case', function (): void {
     Coupons::generate(DiscountType::Percentage, 1000, code: 'SUMMER');
 
-    expect(fn () => Coupons::generate(DiscountType::Percentage, 1000, code: 'summer'))->toThrow(UniqueConstraintViolationException::class)
+    expect(fn () => Coupons::generate(DiscountType::Percentage, 1000, code: 'summer'))->toThrow(CouponCodeTaken::class)
         ->and(Coupon::query()->count())->toBe(1);
 });
 

@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace RoundlyConsulting\Coupons\Actions;
 
+use Illuminate\Database\UniqueConstraintViolationException;
 use Random\Randomizer;
 use RoundlyConsulting\Coupons\DataTransferObjects\CreateCouponData;
 use RoundlyConsulting\Coupons\Enums\DiscountType;
 use RoundlyConsulting\Coupons\Events\CouponCreated;
+use RoundlyConsulting\Coupons\Exceptions\CouponCodeTaken;
 use RoundlyConsulting\Coupons\Exceptions\InvalidCouponConfiguration;
 use RoundlyConsulting\Coupons\Exceptions\InvalidCouponDefinition;
 use RoundlyConsulting\Coupons\Models\Coupon;
@@ -32,12 +34,18 @@ final readonly class CreateCouponAction
      * @throws CurrencyMismatch when the minimum spend or cap is in another currency than the coupon.
      * @throws InvalidCouponConfiguration when a code must be generated and `coupons.code.*` is
      *                                    unusable or its code space is exhausted.
+     * @throws CouponCodeTaken when a live coupon already holds the explicit code (a code only
+     *                         soft-deleted coupons hold is free to reuse).
      */
     public function execute(CreateCouponData $data, bool $quiet = false): Coupon
     {
-        $code = $data->code ?? $this->createUniqueCode();
+        $code = $data->code === null ? $this->createUniqueCode() : CodeFormat::normalize($data->code);
 
         $this->assertValid($data, $code);
+
+        if ($data->code !== null && $this->newModelInstance()->newQuery()->whereCode($code)->exists()) {
+            throw CouponCodeTaken::forCode($code);
+        }
 
         // `currency` first: minimum_spend and max_discount share it, and money's cast refuses
         // to re-denominate a currency column that already holds another code.
@@ -51,7 +59,13 @@ final readonly class CreateCouponAction
             'max_discount' => $data->maxDiscount,
         ]);
 
-        $coupon->save();
+        try {
+            $coupon->save();
+        } catch (UniqueConstraintViolationException $e) {
+            // Another request took the code between the check above and this insert; the
+            // unique index on live codes is the arbiter.
+            throw CouponCodeTaken::forCode($code, $e);
+        }
 
         if (! $quiet) {
             CouponCreated::dispatch($coupon);
@@ -78,8 +92,9 @@ final readonly class CreateCouponAction
     }
 
     /**
-     * A code in the configured `coupons.code.*` format that no coupon holds — trashed ones
-     * included, since the unique index spans them.
+     * A code in the configured `coupons.code.*` format that no coupon holds. Trashed ones are
+     * included even though their codes are free to reuse: a fresh code never collides with a
+     * pruned coupon's redemption history.
      */
     private function createUniqueCode(): string
     {

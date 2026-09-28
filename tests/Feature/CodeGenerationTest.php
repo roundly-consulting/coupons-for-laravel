@@ -152,7 +152,8 @@ it('treats a soft-deleted coupon code as taken', function (): void {
     $taken = CodeFormat::generate(app(Randomizer::class));
     Coupon::factory()->create(['code' => $taken])->delete();
 
-    // The unique index spans trashed rows, so reusing the code would be a DB error.
+    // A trashed coupon's code is free for an explicit reuse, but a generated code never picks
+    // it: a fresh code should not collide with a pruned coupon's redemption history.
     expect(generatedCode())->not->toBe($taken);
 });
 

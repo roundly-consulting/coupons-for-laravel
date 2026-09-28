@@ -58,6 +58,14 @@ class Coupon extends Model
 
     protected $guarded = [];
 
+    /**
+     * The database-generated column that keeps codes unique among live coupons — never
+     * written by Eloquent, so it stays out of arrays and JSON too.
+     *
+     * @var list<string>
+     */
+    protected $hidden = ['undeleted_code'];
+
     protected static function newFactory(): CouponFactory
     {
         return CouponFactory::new();
@@ -79,6 +87,16 @@ class Coupon extends Model
             'expires_at' => 'datetime',
             'meta' => 'collection',
         ];
+    }
+
+    /**
+     * A copy without the database-generated `undeleted_code`, which an insert must never set.
+     *
+     * @param  array<int, string>|null  $except
+     */
+    public function replicate(?array $except = null): static
+    {
+        return parent::replicate([...($except ?? []), 'undeleted_code']);
     }
 
     /**

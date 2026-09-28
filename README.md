@@ -326,7 +326,17 @@ $create->execute(new CreateCouponData(
 
 `CreateCouponAction` throws `InvalidCouponDefinition` for a `Fixed` coupon without a currency,
 a negative fixed value, or a percentage outside 0..10 000 basis points; a minimum spend or cap
-in another currency than the lock throws money's `CurrencyMismatch`. `CreateCouponData::fixed()`
+in another currency than the lock throws money's `CurrencyMismatch`.
+
+A code is unique among coupons that are **not soft-deleted**. An explicit code a live coupon
+already holds (in any case) throws `CouponCodeTaken`, a `CouponException` — also when a
+concurrent request takes it between the check and the insert. A code that only soft-deleted
+coupons hold is free: after `Coupons::prune()` trashes last season's `XMAS`, the next
+`generate(code: 'XMAS')` creates a fresh coupon, and the old row keeps its code and redemption
+history. Restoring a trashed coupon whose code a live coupon now holds fails with the
+database's unique-constraint error. The uniqueness is enforced by the database (a unique index
+on a generated column that holds the code only while the row is not trashed), which needs
+MySQL/MariaDB, PostgreSQL or SQLite. `CreateCouponData::fixed()`
 throws money's `AmountOverflow` for an amount beyond int64 minor units (`value` is a `bigint`).
 
 ### Redeeming a coupon
@@ -468,8 +478,9 @@ bind by primary key).
 php artisan coupons:expire
 php artisan coupons:expire --code=SAVE20
 
-# Prune coupons expired more than N days ago — Coupons::prune(). Soft deletes; --force deletes
-# permanently, including coupons an earlier prune soft-deleted. A negative --days is refused.
+# Prune coupons expired more than N days ago — Coupons::prune(). Soft deletes (the code is free
+# to issue again, the history stays); --force deletes permanently, including coupons an earlier
+# prune soft-deleted. A negative --days is refused.
 php artisan coupons:prune --days=30
 php artisan coupons:prune --days=30 --force
 ```
