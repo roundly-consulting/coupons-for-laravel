@@ -420,7 +420,8 @@ $coupon->previewDiscount($cart);      // Money — never throws; zero on a curre
 ```
 
 `isRedeemableBy()`, `Coupons::check()` and the validation rule below all run the **same**
-eligibility checks as `redeem()`, so they never drift out of sync. Use `Coupons::check()` when
+eligibility checks as `redeem()`, so they never drift out of sync — a soft-deleted `Coupon`
+instance, for one, is `NotFound` for all of them, just as `redeem()` throws `CouponNotFound`. Use `Coupons::check()` when
 you need the reason, not just a yes or no.
 
 ### Redeemer trait

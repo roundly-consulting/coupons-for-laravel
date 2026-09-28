@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 use RoundlyConsulting\Coupons\Actions\CheckCouponAction;
 use RoundlyConsulting\Coupons\Enums\RedemptionFailureReason;
+use RoundlyConsulting\Coupons\Exceptions\CouponNotFound;
+use RoundlyConsulting\Coupons\Facades\Coupons;
 use RoundlyConsulting\Coupons\Models\Coupon;
 use RoundlyConsulting\Coupons\Tests\Fixtures\Customer;
 use RoundlyConsulting\Money\Money;
@@ -52,4 +54,25 @@ it('never writes', function (): void {
     $this->check->execute('OK', Money::ofMinor(5000, 'EUR'));
 
     expect($coupon->fresh()->usage)->toBe(0);
+});
+
+// Regression: for a trashed Coupon instance check() answered null and isRedeemableBy() true,
+// while redeem() threw CouponNotFound — the "never drift apart" promise, broken.
+it('reports a soft-deleted coupon as not found, exactly as redeem does', function (): void {
+    $coupon = Coupon::factory()->active()->fixed(500, 'EUR')->create(['code' => 'GONE']);
+    $coupon->delete();
+    $cart = Money::ofMinor(5000, 'EUR');
+
+    expect($this->check->execute($coupon, $cart))->toBe(RedemptionFailureReason::NotFound)
+        ->and(Coupons::check($coupon))->toBe(RedemptionFailureReason::NotFound)
+        ->and($coupon->isRedeemableBy(null, $cart))->toBeFalse()
+        ->and(fn () => Coupons::redeem($coupon, $cart))->toThrow(CouponNotFound::class);
+
+    $fake = Coupons::fake();
+
+    Coupons::redeem($coupon, $cart);
+
+    expect(Coupons::check($coupon))->toBe(RedemptionFailureReason::NotFound);
+    $fake->assertRedemptionFailed('GONE', RedemptionFailureReason::NotFound);
+    $fake->assertNothingRedeemed();
 });

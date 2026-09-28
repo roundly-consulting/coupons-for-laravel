@@ -6,6 +6,7 @@ use RoundlyConsulting\Coupons\Enums\RedemptionFailureReason;
 use RoundlyConsulting\Coupons\Exceptions\CouponAlreadyRedeemed;
 use RoundlyConsulting\Coupons\Exceptions\CouponAtMaxUsage;
 use RoundlyConsulting\Coupons\Exceptions\CouponExpired;
+use RoundlyConsulting\Coupons\Exceptions\CouponNotFound;
 use RoundlyConsulting\Coupons\Exceptions\CurrencyMismatch;
 use RoundlyConsulting\Coupons\Exceptions\MinimumSpendNotMet;
 use RoundlyConsulting\Coupons\Models\Coupon;
@@ -114,11 +115,13 @@ it('throws the exact mapped exception for each reason', function (): void {
         ->toThrow(CouponAlreadyRedeemed::class);
 });
 
-it('refuses to map the not-found reason inside the guard', function (): void {
-    $coupon = Coupon::factory()->active()->fixed()->create();
+it('reports a soft-deleted coupon as not found before any other reason', function (): void {
+    $coupon = Coupon::factory()->active()->expired()->fixed(500, 'EUR')->create(['code' => 'GONE']);
+    $coupon->delete();
 
-    expect(fn () => $this->guard->throwFor($coupon, RedemptionFailureReason::NotFound, Money::ofMinor(1000, 'USD')))
-        ->toThrow(LogicException::class);
+    expect($this->guard->firstFailure($coupon, Money::ofMinor(1000, 'USD'), null))->toBe(RedemptionFailureReason::NotFound)
+        ->and(fn () => $this->guard->throwFor($coupon, RedemptionFailureReason::NotFound, Money::ofMinor(1000, 'USD')))
+        ->toThrow(CouponNotFound::class, 'No coupon found for code [GONE].');
 });
 
 it('renders the minimum spend as exponent-correct money in the exception message', function (): void {
