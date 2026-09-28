@@ -191,7 +191,7 @@ it('records a redemption made through the redeemer trait', function (): void {
 
 it('fails asserting nothing redeemed after a trait redemption', function (): void {
     $fake = Coupons::fake();
-    Customer::query()->create(['name' => 'Ada'])->redeemCoupon('TRAIT');
+    Customer::query()->create(['name' => 'Ada'])->redeemCoupon('TRAIT', Money::ofMinor(5000, 'EUR'));
 
     $fake->assertNothingRedeemed();
 })->throws(AssertionFailedError::class);

@@ -39,8 +39,9 @@ return [
     | Default Currency
     |--------------------------------------------------------------------------
     |
-    | The ISO 4217 currency code assumed when one is not supplied explicitly.
-    | A coupon may also lock itself to a single currency via its own column.
+    | The ISO 4217 currency code the shipped CouponFactory locks fixed and capped
+    | coupons to when a state names none. Redemption never assumes a currency:
+    | it always takes the cart total's, and a coupon may lock itself to one.
     |
     */
 

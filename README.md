@@ -83,7 +83,7 @@ return [
 | Key | Type | Default | Env | Purpose |
 |---|---|---|---|---|
 | `model` | `class-string` | `RoundlyConsulting\Coupons\Models\Coupon` | — | Coupon model. Point it at your own subclass to extend behaviour; the manager, actions and both console commands all use it. |
-| `default_currency` | `string` | `USD` | `COUPONS_CURRENCY` | ISO 4217 code assumed when one is not given explicitly. |
+| `default_currency` | `string` | `USD` | `COUPONS_CURRENCY` | ISO 4217 code the shipped `CouponFactory` locks fixed and capped coupons to when a state names none (also shown by `about`). Redemption never assumes a currency: it always takes the cart total's. |
 | `redeemer.track` | `bool` | `true` | `COUPONS_TRACK_REDEEMERS` | Record a `coupon_redemptions` row per redeemer (powers per-redeemer caps). Env-style values work: `1`/`true`/`on`/`yes` and `0`/`false`/`off`/`no`; anything unparseable keeps tracking on. |
 | `code.length` | `int` | `6` | `COUPONS_CODE_LENGTH` | Length of auto-generated codes, `4`–`64`. |
 | `code.charset` | `string` | `A–Z0–9` | `COUPONS_CODE_CHARSET` | Alphabet for auto-generated codes: at least 2 distinct symbols (case-insensitively), no whitespace or control characters. It is upper-cased like every code. Multibyte symbols are fine. |
@@ -440,9 +440,11 @@ $history = $user->couponRedemptions;                              // morphMany h
 $used    = $user->hasRedeemed('SAVE20');                          // bool (tracked only)
 ```
 
-With no cart total, `redeemCoupon()` uses a zero amount in `coupons.default_currency`, so a
-coupon with a minimum spend correctly rejects an empty basket. `hasRedeemed()` reflects only
-tracked redemptions (`coupons.redeemer.track = true`, the default).
+`redeemCoupon()` requires the cart total, in the cart's own currency: the discount comes off
+it, the currency lock and minimum spend are checked against it, and a redemption without a
+price would consume a use (the customer's only one, on a single-use coupon) at a zero discount.
+`hasRedeemed()` asks about the live coupon holding the code and reflects only tracked
+redemptions (`coupons.redeemer.track = true`, the default).
 
 ### Validation rule
 

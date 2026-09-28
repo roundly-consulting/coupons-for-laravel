@@ -35,16 +35,13 @@ trait HasCoupons
     }
 
     /**
-     * Redeem a coupon as this redeemer. With no cart total a zero amount in the
-     * configured default currency is used, so a coupon with a minimum spend will
-     * correctly reject an empty basket.
+     * Redeem a coupon as this redeemer against the cart total — the price the discount comes
+     * off, in the cart's own currency. The total is required: a redemption without a price
+     * would consume a use at a zero discount.
      */
-    public function redeemCoupon(Coupon|string $coupon, ?Money $cartTotal = null): RedemptionResult
+    public function redeemCoupon(Coupon|string $coupon, Money $cartTotal): RedemptionResult
     {
-        /** @var string $currency */
-        $currency = config('coupons.default_currency', 'USD');
-
-        return app(CouponManager::class)->redeem($coupon, $cartTotal ?? Money::zero($currency), $this);
+        return app(CouponManager::class)->redeem($coupon, $cartTotal, $this);
     }
 
     /**

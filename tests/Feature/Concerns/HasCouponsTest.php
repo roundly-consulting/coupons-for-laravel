@@ -19,14 +19,33 @@ it('redeems a coupon through the trait with a cart total', function (): void {
         ->and($customer->couponRedemptions()->count())->toBe(1);
 });
 
-it('redeems a coupon through the trait without a cart total', function (): void {
-    $coupon = Coupon::factory()->active()->fixed(100)->create(['code' => 'FREE']);
+// Regression: with no cart total the trait redeemed against a zero amount in
+// `coupons.default_currency` — a fixed coupon in any other currency threw CurrencyMismatch,
+// and anything else burned a use at a 0.00 discount (the customer's only use of a single-use
+// coupon, gone for nothing). A redemption now always prices a real cart.
+it('requires a cart total, so a use is never burned at a zero discount', function (): void {
+    $coupon = Coupon::factory()->active()->percentage(2000)->create(['code' => 'ONCE', 'max_usage' => 1]);
     $customer = Customer::query()->create(['name' => 'Ada']);
 
-    $result = $customer->redeemCoupon($coupon);
+    expect(fn () => $customer->redeemCoupon('ONCE'))->toThrow(ArgumentCountError::class)
+        ->and($coupon->fresh()?->usage)->toBe(0);
+
+    $result = $customer->redeemCoupon('ONCE', Money::ofMinor(5000, 'EUR'));
+
+    expect($result->discount->minor())->toBe('1000')
+        ->and($coupon->fresh()?->isAtMaximumUsage())->toBeTrue();
+});
+
+it('redeems a fixed coupon in a currency other than the default', function (): void {
+    config()->set('coupons.default_currency', 'USD');
+    Coupon::factory()->active()->fixed(500, 'EUR')->create(['code' => 'EURO']);
+    $customer = Customer::query()->create(['name' => 'Ada']);
+
+    $result = $customer->redeemCoupon('EURO', Money::ofMinor(2000, 'EUR'));
 
     expect($result)->toBeInstanceOf(RedemptionResult::class)
-        ->and($result->total->currency()->code)->toBe('USD');
+        ->and($result->total->minor())->toBe('1500')
+        ->and($result->total->currency()->code)->toBe('EUR');
 });
 
 it('enforces the per-redeemer cap through the trait', function (): void {
