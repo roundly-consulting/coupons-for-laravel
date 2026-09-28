@@ -347,8 +347,9 @@ throws money's `AmountOverflow` for an amount beyond int64 minor units (`value` 
 
 ### Redeeming a coupon
 
-Redemption validates eligibility, increments usage **atomically** (a DB transaction with
-`lockForUpdate`, so concurrent redemptions can never exceed `max_usage`), records a
+Redemption validates eligibility, increments usage **atomically** (a transaction with
+`lockForUpdate` on the coupon model's own connection, so concurrent redemptions can never
+exceed `max_usage` — also when `coupons.model` lives on a non-default connection), records a
 per-redeemer row when tracking is on, and dispatches `CouponRedeemed`. It returns a
 `RedemptionResult { Coupon $coupon, Money $discount, Money $total, ?Model $redeemer, bool $freeShipping }`.
 

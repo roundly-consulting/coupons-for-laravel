@@ -6,7 +6,6 @@ namespace RoundlyConsulting\Coupons\Actions;
 
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Support\Facades\DB;
 use RoundlyConsulting\Coupons\DataTransferObjects\RedeemCouponData;
 use RoundlyConsulting\Coupons\DataTransferObjects\RedemptionResult;
 use RoundlyConsulting\Coupons\Enums\RedemptionFailureReason;
@@ -35,7 +34,9 @@ final readonly class RedeemCouponAction
     /**
      * Validate a coupon and redeem it atomically: the eligibility checks and the
      * usage increment run inside a single transaction against a row locked with
-     * lockForUpdate, so two concurrent redemptions can never exceed max_usage.
+     * lockForUpdate, so two concurrent redemptions can never exceed max_usage. The
+     * transaction runs on the coupon model's own connection — a lock taken outside a
+     * transaction on that connection would be released the moment it was taken.
      *
      * @throws CouponNotFound when the code resolves to no coupon.
      * @throws CurrencyMismatch|MinimumSpendNotMet|CouponExpired|CouponAtMaxUsage|CouponAlreadyRedeemed
@@ -44,7 +45,7 @@ final readonly class RedeemCouponAction
     {
         $couponId = $this->resolveCouponId($data->coupon, $data->redeemer);
 
-        return DB::transaction(function () use ($couponId, $data): RedemptionResult {
+        return $this->newQuery()->getConnection()->transaction(function () use ($couponId, $data): RedemptionResult {
             $coupon = $this->newQuery()
                 ->whereKey($couponId)
                 ->lockForUpdate()
