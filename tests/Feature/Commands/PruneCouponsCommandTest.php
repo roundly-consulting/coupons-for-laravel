@@ -69,3 +69,25 @@ it('runs through the manager, so the fake records it', function (): void {
 
     $fake->assertPruned(days: 7, force: true);
 });
+
+// Regression: `(int) 'thirty'` is 0, so a typo'd window pruned every expired coupon — one that
+// expired an hour ago included — and reported success.
+it('refuses a window that is not a whole number of days', function (string $days): void {
+    $recent = Coupon::factory()->create(['expires_at' => now()->subHour()]);
+
+    $this->artisan('coupons:prune', ['--days' => $days])
+        ->expectsOutputToContain('The --days option must be a whole number of days')
+        ->assertFailed();
+
+    expect(Coupon::query()->whereKey($recent->id)->exists())->toBeTrue();
+})->with(['a word' => 'thirty', 'a fraction' => '1.5', 'a unit' => '30d', 'empty' => '']);
+
+it('accepts a zero window', function (): void {
+    $recent = Coupon::factory()->create(['expires_at' => now()->subHour()]);
+
+    $this->artisan('coupons:prune', ['--days' => '0'])
+        ->expectsOutputToContain('Pruned 1 coupon(s).')
+        ->assertSuccessful();
+
+    expect(Coupon::query()->whereKey($recent->id)->exists())->toBeFalse();
+});

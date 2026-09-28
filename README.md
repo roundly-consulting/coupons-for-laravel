@@ -491,7 +491,7 @@ php artisan coupons:expire --code=SAVE20
 
 # Prune coupons expired more than N days ago — Coupons::prune(). Soft deletes (the code is free
 # to issue again, the history stays); --force deletes permanently, including coupons an earlier
-# prune soft-deleted. A negative --days is refused.
+# prune soft-deleted. A --days that is negative or not a whole number (thirty, 1.5) is refused.
 php artisan coupons:prune --days=30
 php artisan coupons:prune --days=30 --force
 ```
