@@ -27,6 +27,7 @@ use RoundlyConsulting\Money\Currency;
 use RoundlyConsulting\Money\Discounts\Discount;
 use RoundlyConsulting\Money\Exceptions\CurrencyMismatch;
 use RoundlyConsulting\Money\Money;
+use RoundlyConsulting\PackageToolkit\Support\Config;
 
 /**
  * @property int $id
@@ -378,7 +379,7 @@ class Coupon extends Model
      */
     public function remainingUsageFor(Model $redeemer): ?int
     {
-        if (config('coupons.redeemer.track', true) !== true || $this->max_usage_per_redeemer <= 0) {
+        if (! Config::boolean('coupons.redeemer.track', true) || $this->max_usage_per_redeemer <= 0) {
             return null;
         }
 

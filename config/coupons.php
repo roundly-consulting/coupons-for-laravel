@@ -53,7 +53,8 @@ return [
     |
     | When enabled, every redemption that carries a redeemer is recorded in the
     | coupon_redemptions table, which powers per-redeemer usage caps. Disable to
-    | skip writing redemption rows; the global usage cap still applies.
+    | skip writing redemption rows; the global usage cap still applies. Env-style
+    | values work: "1"/"true"/"on"/"yes" and "0"/"false"/"off"/"no".
     |
     */
 

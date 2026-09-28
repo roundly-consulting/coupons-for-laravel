@@ -33,3 +33,36 @@ it('removes redemptions when the coupon is deleted', function (): void {
 
     expect(CouponRedemption::withTrashed()->count())->toBe(0);
 });
+
+// Regression: `coupons.redeemer.track` had to be the exact bool `true`. The env yields strings,
+// so COUPONS_TRACK_REDEEMERS=1 silently switched tracking off — and "one per customer" with it.
+it('reads redeemer tracking from env-style values', function (mixed $track, bool $tracked): void {
+    config()->set('coupons.redeemer.track', $track);
+    $coupon = Coupon::factory()->fixed(500, 'EUR')->active()->create(['code' => 'ONCE', 'max_usage_per_redeemer' => 1]);
+    $ada = Customer::query()->create(['name' => 'Ada']);
+
+    $coupon->redeemBy($ada, Money::ofMinor(5000, 'EUR'));
+
+    expect($coupon->redemptions()->count())->toBe($tracked ? 1 : 0)
+        ->and($coupon->remainingUsageFor($ada))->toBe($tracked ? 0 : null);
+
+    if ($tracked) {
+        expect(fn () => $coupon->redeemBy($ada, Money::ofMinor(5000, 'EUR')))->toThrow(CouponAlreadyRedeemed::class);
+    }
+
+    $this->artisan('about', ['--only' => 'coupons'])
+        ->expectsOutputToContain($tracked ? 'ON' : 'OFF')
+        ->assertSuccessful();
+})->with([
+    'string 1' => ['1', true],
+    'string true' => ['true', true],
+    'string on' => ['on', true],
+    'string yes' => ['yes', true],
+    'int 1' => [1, true],
+    'bool true' => [true, true],
+    'string 0' => ['0', false],
+    'string false' => ['false', false],
+    'string off' => ['off', false],
+    'int 0' => [0, false],
+    'bool false' => [false, false],
+]);

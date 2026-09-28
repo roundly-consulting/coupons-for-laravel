@@ -12,6 +12,7 @@ use RoundlyConsulting\Coupons\Support\RedemptionGuard;
 use RoundlyConsulting\PackageToolkit\Concerns\RegistersBlueprintMacros;
 use RoundlyConsulting\PackageToolkit\Package;
 use RoundlyConsulting\PackageToolkit\PackageServiceProvider;
+use RoundlyConsulting\PackageToolkit\Support\Config;
 
 final class CouponsServiceProvider extends PackageServiceProvider
 {
@@ -31,7 +32,7 @@ final class CouponsServiceProvider extends PackageServiceProvider
             ->contributesToAbout(static fn (): array => [
                 'Model' => class_basename(CouponModel::class()),
                 'Default currency' => self::currency(),
-                'Redeemer tracking' => config('coupons.redeemer.track', true) === true ? 'ON' : 'OFF',
+                'Redeemer tracking' => Config::boolean('coupons.redeemer.track', true) ? 'ON' : 'OFF',
                 // The alphabet is reported by size only: printing it would hand a
                 // brute-forcer the exact key space generated codes are drawn from.
                 'Generated codes' => CodeFormat::describe(),

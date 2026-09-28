@@ -24,6 +24,7 @@ use RoundlyConsulting\Coupons\Support\CodeFormat;
 use RoundlyConsulting\Coupons\Support\CouponModel;
 use RoundlyConsulting\Coupons\Support\RedemptionGuard;
 use RoundlyConsulting\Money\Money;
+use RoundlyConsulting\PackageToolkit\Support\Config;
 
 final readonly class RedeemCouponAction
 {
@@ -109,7 +110,8 @@ final readonly class RedeemCouponAction
 
     private function recordRedemption(Coupon $coupon, Money $discount, ?Model $redeemer): void
     {
-        if ($redeemer === null || config('coupons.redeemer.track', true) !== true) {
+        // Env-style values ('1', 'true', 'on', 'yes' / '0', 'false', 'off', 'no') count.
+        if ($redeemer === null || ! Config::boolean('coupons.redeemer.track', true)) {
             return;
         }
 
