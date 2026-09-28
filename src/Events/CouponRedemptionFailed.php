@@ -11,7 +11,8 @@ use RoundlyConsulting\Coupons\Enums\RedemptionFailureReason;
 /**
  * Dispatched on every rejected redemption attempt that flows through the
  * redemption action, carrying the attempted code, the failing reason, and the
- * redeemer (when one was supplied). Useful for fraud and analytics hooks.
+ * redeemer (when one was supplied). Useful for fraud and analytics hooks. Fires right
+ * away, even inside a transaction: the attempt happened whether or not anything commits.
  */
 final class CouponRedemptionFailed
 {

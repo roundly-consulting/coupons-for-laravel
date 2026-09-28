@@ -2,11 +2,15 @@
 
 declare(strict_types=1);
 
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
+use RoundlyConsulting\Coupons\Enums\DiscountType;
 use RoundlyConsulting\Coupons\Enums\RedemptionFailureReason;
+use RoundlyConsulting\Coupons\Events\CouponCreated;
 use RoundlyConsulting\Coupons\Events\CouponExhausted;
 use RoundlyConsulting\Coupons\Events\CouponRedeemed;
 use RoundlyConsulting\Coupons\Events\CouponRedemptionFailed;
+use RoundlyConsulting\Coupons\Events\CouponRevoked;
 use RoundlyConsulting\Coupons\Exceptions\CouponException;
 use RoundlyConsulting\Coupons\Facades\Coupons;
 use RoundlyConsulting\Coupons\Models\Coupon;
@@ -113,4 +117,91 @@ it('dispatches redeemed before exhausted on the final use', function (): void {
     Coupons::redeem($coupon->code, Money::ofMinor(1000, 'USD'));
 
     expect($dispatched)->toBe([CouponRedeemed::class, CouponExhausted::class]);
+});
+
+// Regression: CouponRedeemed and CouponExhausted fired inside the transaction. A host that
+// wraps redeem() in its own transaction and rolls back (the payment failed) had already
+// announced a redemption that never persisted. The state-change events now wait for the
+// outermost commit and are dropped on a rollback.
+function listenForStateEvents(): Closure
+{
+    $heard = [];
+
+    foreach ([CouponCreated::class, CouponRedeemed::class, CouponExhausted::class, CouponRevoked::class] as $event) {
+        Event::listen($event, function () use (&$heard, $event): void {
+            $heard[] = [class_basename($event), DB::transactionLevel()];
+        });
+    }
+
+    return function () use (&$heard): array {
+        return $heard;
+    };
+}
+
+it('holds redemption events until the host transaction commits', function (): void {
+    Coupon::factory()->active()->fixed(500, 'EUR')->create(['code' => 'ONCE', 'max_usage' => 1]);
+    $heard = listenForStateEvents();
+
+    DB::transaction(function () use ($heard): void {
+        Coupons::redeem('ONCE', Money::ofMinor(5000, 'EUR'));
+
+        expect($heard())->toBe([]);
+    });
+
+    expect($heard())->toBe([['CouponRedeemed', 0], ['CouponExhausted', 0]]);
+});
+
+it('never announces a redemption the host rolled back', function (): void {
+    $coupon = Coupon::factory()->active()->fixed(500, 'EUR')->create(['code' => 'ONCE', 'max_usage' => 1]);
+    $heard = listenForStateEvents();
+
+    try {
+        DB::transaction(function (): void {
+            Coupons::redeem('ONCE', Money::ofMinor(5000, 'EUR'));
+
+            throw new RuntimeException('The payment failed.');
+        });
+    } catch (RuntimeException) {
+        // The host's checkout failed after the coupon was redeemed.
+    }
+
+    expect($heard())->toBe([])
+        ->and($coupon->fresh()?->usage)->toBe(0);
+});
+
+it('never announces a creation or revocation the host rolled back', function (): void {
+    $live = Coupon::factory()->active()->create(['code' => 'LIVE']);
+    $heard = listenForStateEvents();
+
+    try {
+        DB::transaction(function () use ($live): void {
+            Coupons::generate(DiscountType::Percentage, 1000, code: 'NEVER');
+            Coupons::revoke($live);
+
+            throw new RuntimeException('The admin action failed.');
+        });
+    } catch (RuntimeException) {
+        // Rolled back.
+    }
+
+    expect($heard())->toBe([]);
+
+    Coupons::generate(DiscountType::Percentage, 1000, code: 'KEPT');
+    Coupons::revoke($live);
+
+    expect($heard())->toBe([['CouponCreated', 0], ['CouponRevoked', 0]]);
+});
+
+it('announces a rejected attempt right away, even inside a transaction', function (): void {
+    Coupon::factory()->active()->expired()->create(['code' => 'OLD']);
+    $failed = [];
+    Event::listen(CouponRedemptionFailed::class, function (CouponRedemptionFailed $event) use (&$failed): void {
+        $failed[] = $event->reason;
+    });
+
+    DB::transaction(function (): void {
+        attemptRedeem('OLD', Money::ofMinor(1000, 'USD'));
+    });
+
+    expect($failed)->toBe([RedemptionFailureReason::Expired]);
 });

@@ -3,7 +3,10 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use RoundlyConsulting\Coupons\Enums\DiscountType;
+use RoundlyConsulting\Coupons\Events\CouponExhausted;
+use RoundlyConsulting\Coupons\Events\CouponRedeemed;
 use RoundlyConsulting\Coupons\Exceptions\CouponAtMaxUsage;
 use RoundlyConsulting\Coupons\Facades\Coupons;
 use RoundlyConsulting\Coupons\Tests\Fixtures\OtherConnectionCoupon;
@@ -39,6 +42,11 @@ beforeEach(function (): void {
 });
 
 it('locks the coupon row inside a transaction on the coupon model connection', function (): void {
+    $heard = [];
+    Event::listen([CouponRedeemed::class, CouponExhausted::class], function (object $event) use (&$heard): void {
+        $heard[] = class_basename($event);
+    });
+
     $connection = DB::connection('coupons_other');
     $connection->setQueryGrammar(new LockRecordingGrammar($connection));
     LockRecorder::listenForMarkers();
@@ -55,5 +63,7 @@ it('locks the coupon row inside a transaction on the coupon model connection', f
         // Depth 1 on the coupon's OWN connection: the lock holds until the increment commits.
         ->and($locks[0]['transactionDepth'])->toBe(1)
         ->and(OtherConnectionCoupon::query()->where('code', 'ELSEWHERE')->value('usage'))->toBe(1)
+        // The after-commit events still fire once that connection's transaction commits.
+        ->and($heard)->toBe(['CouponRedeemed', 'CouponExhausted'])
         ->and(fn () => Coupons::redeem('ELSEWHERE', Money::ofMinor(5000, 'EUR')))->toThrow(CouponAtMaxUsage::class);
 });

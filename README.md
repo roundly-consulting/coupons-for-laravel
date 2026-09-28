@@ -560,8 +560,14 @@ Event::listen(function (CouponExhausted $event): void {
 });
 ```
 
+`CouponCreated`, `CouponRedeemed`, `CouponExhausted` and `CouponRevoked` implement Laravel's
+`ShouldDispatchAfterCommit`. Inside a transaction (yours, or the redemption's own) they fire
+only once the outermost transaction commits, and are dropped if it rolls back, so a checkout
+that redeems a coupon and then fails its payment never announces the redemption.
+
 `CouponRedemptionFailed` fires from the redemption attempt (the single mutating path), once
-per rejected attempt, and the matching exception is still thrown. `CouponExhausted` fires
+per rejected attempt, and the matching exception is still thrown. It fires right away, even
+inside a transaction: the attempt happened either way. `CouponExhausted` fires
 exactly once — on the redemption that brings `usage` up to `max_usage` — never for unlimited
 coupons and never again on a later rejected attempt.
 
