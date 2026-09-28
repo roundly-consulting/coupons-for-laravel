@@ -68,6 +68,7 @@ The published `config/coupons.php` exposes:
 ```php
 return [
     'model' => \RoundlyConsulting\Coupons\Models\Coupon::class,
+    'key_type' => env('COUPONS_KEY_TYPE', 'bigint'),
     'default_currency' => env('COUPONS_CURRENCY', 'USD'),
     'redeemer' => [
         'track' => env('COUPONS_TRACK_REDEEMERS', true),
@@ -83,6 +84,7 @@ return [
 | Key | Type | Default | Env | Purpose |
 |---|---|---|---|---|
 | `model` | `class-string` | `RoundlyConsulting\Coupons\Models\Coupon` | — | Coupon model. Point it at your own subclass to extend behaviour; the manager, actions and both console commands all use it. |
+| `key_type` | `string` | `bigint` | `COUPONS_KEY_TYPE` | Key type of the polymorphic `redeemer` column on `coupon_redemptions`: `bigint`, `uuid` or `ulid`, matching your redeemer models' primary keys (they must all share one; a `KeyType` case works too). The migration reads it, so set it **before** you migrate. An unrecognised value falls back to `bigint`. |
 | `default_currency` | `string` | `USD` | `COUPONS_CURRENCY` | ISO 4217 code the shipped `CouponFactory` locks fixed and capped coupons to when a state names none (also shown by `about`). Redemption never assumes a currency: it always takes the cart total's. |
 | `redeemer.track` | `bool` | `true` | `COUPONS_TRACK_REDEEMERS` | Record a `coupon_redemptions` row per redeemer (powers per-redeemer caps). Env-style values work: `1`/`true`/`on`/`yes` and `0`/`false`/`off`/`no`; anything unparseable keeps tracking on. |
 | `code.length` | `int` | `6` | `COUPONS_CODE_LENGTH` | Length of auto-generated codes, `4`–`64`. |
@@ -113,7 +115,7 @@ exact integer string, in a registered currency with its real exponent (`500 JPY`
 | Type | `value` | Example |
 |---|---|---|
 | `Fixed` | minor units of the coupon's `currency` | `500` + `EUR` = €5.00 off |
-| `Percentage` | **basis points** (0..10 000) | `2500` = 25 %, `1250` = 12.5 % |
+| `Percentage` | whole **basis points** (0..10 000) | `2500` = 25 %, `1250` = 12.5 % |
 | `FreeShipping` | ignored (`0`) | — |
 
 A coupon **must** be locked to a currency when it is `Fixed` or has a `minimum_spend` /
@@ -583,8 +585,10 @@ only when a redeemer is supplied.
 This package hard-requires two lower-tier roundly packages (wired automatically):
 
 - **[money-for-laravel](https://github.com/roundly-consulting/money-for-laravel)** — every
-  amount is its `Money`; a coupon's value becomes its `Discount` (fixed, percentage with
-  fractional basis points, free shipping, cap); `minimum_spend` / `max_discount` /
+  amount is its `Money`; a coupon's value becomes its `Discount` (fixed, percentage, free
+  shipping, cap). A coupon stores a percentage as whole basis points (0.01 %), so
+  `CreateCouponData::percentage('12.5')` works while `'12.345'` throws money's
+  `RoundingNecessary`; `minimum_spend` / `max_discount` /
   `amount_discounted` use its `AsMoney` casts and `$table->money()` columns (`decimal(38,0)`);
   `Coupon::discount()` hands hosts a `Discount` to compose in a `DiscountStack`.
 
