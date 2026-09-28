@@ -33,7 +33,7 @@ final readonly class ExpireCouponsAction
             });
 
         if ($code !== null) {
-            $query->where('code', $code);
+            $query->whereCode($code);
         }
 
         $count = 0;

@@ -13,6 +13,7 @@ use RoundlyConsulting\Coupons\DataTransferObjects\RedemptionResult;
 use RoundlyConsulting\Coupons\Enums\DiscountType;
 use RoundlyConsulting\Coupons\Enums\RedemptionFailureReason;
 use RoundlyConsulting\Coupons\Models\Coupon;
+use RoundlyConsulting\Coupons\Support\CodeFormat;
 use RoundlyConsulting\Coupons\Support\RedemptionGuard;
 use RoundlyConsulting\Money\Money;
 
@@ -71,6 +72,8 @@ final class CouponsFake extends CouponManager
 
     public function find(string $code): ?Coupon
     {
+        $code = CodeFormat::normalize($code);
+
         foreach (array_reverse($this->created) as $coupon) {
             if ($coupon->code === $code) {
                 return $coupon;
@@ -153,6 +156,7 @@ final class CouponsFake extends CouponManager
     {
         $this->expiredAll[] = $code;
 
+        $code = $code === null ? null : CodeFormat::normalize($code);
         $count = 0;
 
         foreach ($this->created as $coupon) {
@@ -209,6 +213,8 @@ final class CouponsFake extends CouponManager
             return;
         }
 
+        $code = $code === null ? null : CodeFormat::normalize($code);
+
         $matched = array_filter($this->redeemed, static function (RedemptionResult $result) use ($code, $callback): bool {
             if ($code !== null && $result->coupon->code !== $code) {
                 return false;
@@ -222,6 +228,8 @@ final class CouponsFake extends CouponManager
 
     public function assertNotRedeemed(string $code): void
     {
+        $code = CodeFormat::normalize($code);
+
         $matched = array_filter($this->redeemed, static fn (RedemptionResult $result): bool => $result->coupon->code === $code);
 
         Assert::assertEmpty($matched, "Expected coupon \"{$code}\" not to be redeemed, but it was.");
@@ -237,6 +245,7 @@ final class CouponsFake extends CouponManager
      */
     public function assertRedemptionFailed(string $code, RedemptionFailureReason|string|null $reason = null): void
     {
+        $code = CodeFormat::normalize($code);
         $expected = $reason instanceof RedemptionFailureReason ? $reason->value : $reason;
 
         $matched = array_filter($this->failed, static function (array $entry) use ($code, $expected): bool {
@@ -255,6 +264,8 @@ final class CouponsFake extends CouponManager
      */
     public function assertRevoked(?string $code = null): void
     {
+        $code = $code === null ? null : CodeFormat::normalize($code);
+
         $matched = array_filter($this->revoked, static fn (Coupon $coupon): bool => $code === null || $coupon->code === $code);
 
         Assert::assertNotEmpty($matched, $code === null

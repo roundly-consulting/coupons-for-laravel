@@ -38,13 +38,14 @@ final class CodeFormat
     }
 
     /**
-     * The alphabet split into symbols (multibyte-safe). An absent key falls back to the
-     * shipped alphabet; anything present must be a usable one.
+     * The alphabet split into symbols (multibyte-safe), upper-cased like every code. An absent
+     * key falls back to the shipped alphabet; anything present must be a usable one.
      *
      * @return list<string>
      *
      * @throws InvalidCouponConfiguration when the alphabet is empty, not a string, holds
-     *                                    whitespace/control characters, repeats a symbol,
+     *                                    whitespace/control characters, repeats a symbol
+     *                                    (case-insensitively),
      *                                    or has fewer than MIN_SYMBOLS symbols.
      */
     public static function symbols(): array
@@ -60,10 +61,15 @@ final class CodeFormat
             throw InvalidCouponConfiguration::invalidCharset('must not contain whitespace or control characters');
         }
 
-        $symbols = mb_str_split($charset);
+        // Codes are case-insensitive and stored upper-cased, so the alphabet is too: `a` and
+        // `A` are one symbol, and an alphabet holding both would silently shrink the key space.
+        $symbols = array_map(
+            static fn (string $symbol): string => mb_strtoupper($symbol, 'UTF-8'),
+            mb_str_split($charset),
+        );
 
         if (count(array_unique($symbols)) !== count($symbols)) {
-            throw InvalidCouponConfiguration::invalidCharset('must not contain duplicate symbols');
+            throw InvalidCouponConfiguration::invalidCharset('must not contain duplicate symbols (case-insensitively)');
         }
 
         if (count($symbols) < self::MIN_SYMBOLS) {
@@ -71,6 +77,19 @@ final class CodeFormat
         }
 
         return $symbols;
+    }
+
+    /**
+     * The canonical form of a code: surrounding whitespace (Unicode spaces included) trimmed,
+     * upper-cased. Codes are case-insensitive, so every write and every lookup goes through
+     * this — matching and uniqueness never depend on the database collation.
+     */
+    public static function normalize(string $code): string
+    {
+        // `preg_replace` returns null on invalid UTF-8; a plain trim is the best that input gets.
+        $trimmed = preg_replace('/^[\s\p{Z}\x{200B}\x{FEFF}]+|[\s\p{Z}\x{200B}\x{FEFF}]+$/u', '', $code) ?? trim($code);
+
+        return mb_strtoupper($trimmed, 'UTF-8');
     }
 
     /**

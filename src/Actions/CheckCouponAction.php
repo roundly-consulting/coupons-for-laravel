@@ -39,10 +39,6 @@ final readonly class CheckCouponAction
 
     private function find(string $code): ?Coupon
     {
-        if ($code === '') {
-            return null;
-        }
-
-        return CouponModel::class()::query()->where('code', $code)->first();
+        return CouponModel::class()::query()->whereCode($code)->first();
     }
 }

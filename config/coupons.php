@@ -67,9 +67,10 @@ return [
     |--------------------------------------------------------------------------
     |
     | Controls auto-generated coupon codes: how many characters (4-64) and
-    | which alphabet they are drawn from. The alphabet is used exactly as given
-    | (case included) and needs at least 2 distinct symbols with no whitespace
-    | or control characters. Explicit codes are never checked against it.
+    | which alphabet they are drawn from. Codes are case-insensitive and stored
+    | upper-cased, so the alphabet is upper-cased too; it needs at least 2
+    | distinct symbols (case-insensitively) with no whitespace or control
+    | characters. Explicit codes are never checked against it.
     |
     */
 

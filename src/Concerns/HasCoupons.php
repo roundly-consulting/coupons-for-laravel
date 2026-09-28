@@ -11,6 +11,7 @@ use RoundlyConsulting\Coupons\CouponManager;
 use RoundlyConsulting\Coupons\DataTransferObjects\RedemptionResult;
 use RoundlyConsulting\Coupons\Models\Coupon;
 use RoundlyConsulting\Coupons\Models\CouponRedemption;
+use RoundlyConsulting\Coupons\Support\CodeFormat;
 use RoundlyConsulting\Money\Money;
 
 /**
@@ -47,13 +48,13 @@ trait HasCoupons
     }
 
     /**
-     * Whether this redeemer has a recorded redemption of the given coupon code.
-     * Only reflects tracked redemptions (coupons.redeemer.track = true).
+     * Whether this redeemer has a recorded redemption of the given coupon code (matched
+     * case-insensitively). Only reflects tracked redemptions (coupons.redeemer.track = true).
      */
     public function hasRedeemed(string $code): bool
     {
         return $this->couponRedemptions()
-            ->whereHas('coupon', fn (Builder $query): Builder => $query->where('code', $code))
+            ->whereHas('coupon', fn (Builder $query): Builder => $query->where('code', CodeFormat::normalize($code)))
             ->exists();
     }
 }

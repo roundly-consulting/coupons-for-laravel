@@ -22,6 +22,7 @@ use RoundlyConsulting\Coupons\Enums\RedemptionFailureReason;
 use RoundlyConsulting\Coupons\Exceptions\CouponNotFound;
 use RoundlyConsulting\Coupons\Handles\CouponCode;
 use RoundlyConsulting\Coupons\Models\Coupon;
+use RoundlyConsulting\Coupons\Support\CodeFormat;
 use RoundlyConsulting\Coupons\Support\CouponModel;
 use RoundlyConsulting\Money\Currency;
 use RoundlyConsulting\Money\Money;
@@ -69,9 +70,12 @@ class CouponManager
         return $this->container->make(CreateCouponAction::class)->execute($data, quiet: true);
     }
 
+    /**
+     * The coupon holding the code — matched case-insensitively, surrounding whitespace ignored.
+     */
     public function find(string $code): ?Coupon
     {
-        return $this->newQuery()->where('code', $code)->first();
+        return $this->newQuery()->whereCode($code)->first();
     }
 
     /**
@@ -79,7 +83,7 @@ class CouponManager
      */
     public function findOrFail(string $code): Coupon
     {
-        return $this->find($code) ?? throw CouponNotFound::forCode($code);
+        return $this->find($code) ?? throw CouponNotFound::forCode(CodeFormat::normalize($code));
     }
 
     /**

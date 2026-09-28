@@ -20,6 +20,7 @@ use RoundlyConsulting\Coupons\Exceptions\CouponNotFound;
 use RoundlyConsulting\Coupons\Exceptions\CurrencyMismatch;
 use RoundlyConsulting\Coupons\Exceptions\MinimumSpendNotMet;
 use RoundlyConsulting\Coupons\Models\Coupon;
+use RoundlyConsulting\Coupons\Support\CodeFormat;
 use RoundlyConsulting\Coupons\Support\CouponModel;
 use RoundlyConsulting\Coupons\Support\RedemptionGuard;
 use RoundlyConsulting\Money\Money;
@@ -126,12 +127,14 @@ final readonly class RedeemCouponAction
             return (int) $coupon->getKey();
         }
 
-        $found = $this->newQuery()->where('code', $coupon)->first();
+        $found = $this->newQuery()->whereCode($coupon)->first();
 
         if ($found === null) {
-            $this->fail($coupon, RedemptionFailureReason::NotFound, $redeemer);
+            $code = CodeFormat::normalize($coupon);
 
-            throw CouponNotFound::forCode($coupon);
+            $this->fail($code, RedemptionFailureReason::NotFound, $redeemer);
+
+            throw CouponNotFound::forCode($code);
         }
 
         return (int) $found->getKey();

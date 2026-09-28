@@ -6,10 +6,13 @@ namespace RoundlyConsulting\Coupons\Models;
 
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
+use Illuminate\Contracts\Database\Eloquent\Builder as BuilderContract;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Collection;
 use RoundlyConsulting\Coupons\CouponManager;
@@ -17,6 +20,7 @@ use RoundlyConsulting\Coupons\Database\Factories\CouponFactory;
 use RoundlyConsulting\Coupons\DataTransferObjects\RedemptionResult;
 use RoundlyConsulting\Coupons\Enums\DiscountType;
 use RoundlyConsulting\Coupons\Exceptions\InvalidCouponDefinition;
+use RoundlyConsulting\Coupons\Support\CodeFormat;
 use RoundlyConsulting\Money\Casts\AsCurrency;
 use RoundlyConsulting\Money\Casts\AsMoney;
 use RoundlyConsulting\Money\Currency;
@@ -130,11 +134,22 @@ class Coupon extends Model
     }
 
     /**
+     * The coupon holding the code, matched case-insensitively and whitespace-trimmed (the
+     * form every code is stored in). A blank code matches nothing.
+     *
      * @param  Builder<Coupon>  $query
      */
     public function scopeWhereCode(Builder $query, string $code): void
     {
-        $query->where('code', $code);
+        $code = CodeFormat::normalize($code);
+
+        if ($code === '') {
+            $query->whereRaw('1 = 0');
+
+            return;
+        }
+
+        $query->where($query->qualifyColumn('code'), $code);
     }
 
     public function getRouteKeyName(): string
@@ -143,6 +158,34 @@ class Coupon extends Model
         $key = config('coupons.route_key', 'code');
 
         return $key;
+    }
+
+    /**
+     * Bind `{coupon}` by code the way every lookup matches it: case-insensitively.
+     *
+     * @param  Model|BuilderContract|Relation<Model, Model, mixed>  $query
+     * @param  mixed  $value
+     * @param  string|null  $field
+     * @return BuilderContract
+     */
+    public function resolveRouteBindingQuery($query, $value, $field = null)
+    {
+        $field ??= $this->getRouteKeyName();
+
+        return $query->where($field, $field === 'code' && is_string($value) ? CodeFormat::normalize($value) : $value);
+    }
+
+    /**
+     * Every code is stored in its canonical form, however it was written — through the
+     * action, a factory, or straight onto the model.
+     *
+     * @return Attribute<string, string|null>
+     */
+    protected function code(): Attribute
+    {
+        return Attribute::make(
+            set: static fn (?string $value): ?string => $value === null ? null : CodeFormat::normalize($value),
+        );
     }
 
     public function canBeApplied(): bool

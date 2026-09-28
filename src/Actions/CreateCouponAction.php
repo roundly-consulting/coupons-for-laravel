@@ -88,7 +88,7 @@ final readonly class CreateCouponAction
         for ($attempt = 1; $attempt <= self::MAX_CODE_ATTEMPTS; $attempt++) {
             $code = CodeFormat::generate($randomizer);
 
-            if (! $this->newModelInstance()->newQuery()->withTrashed()->where('code', $code)->exists()) {
+            if (! $this->newModelInstance()->newQuery()->withTrashed()->whereCode($code)->exists()) {
                 return $code;
             }
         }

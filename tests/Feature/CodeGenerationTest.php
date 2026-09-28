@@ -39,10 +39,18 @@ it('keeps the shipped format when the keys are left at their defaults', function
     expect(generatedCode())->toMatch('/^[A-Z0-9]{6}$/');
 });
 
-it('honours a lowercase alphabet as given instead of uppercasing it', function (): void {
+// Codes are case-insensitive and stored upper-cased, so a lowercase alphabet yields the same
+// codes its upper-case twin would — never a code no lookup could match.
+it('upper-cases a lowercase alphabet, since codes are case-insensitive', function (): void {
     config()->set('coupons.code.charset', 'abcdefgh');
 
-    expect(generatedCode())->toMatch('/^[a-h]{6}$/');
+    expect(generatedCode())->toMatch('/^[A-H]{6}$/');
+});
+
+it('rejects an alphabet whose symbols differ only by case', function (): void {
+    config()->set('coupons.code.charset', 'abcA');
+
+    expect(fn () => generatedCode())->toThrow(InvalidCouponConfiguration::class, 'duplicate symbols (case-insensitively)');
 });
 
 it('draws from a multibyte alphabet by symbol, not by byte', function (): void {

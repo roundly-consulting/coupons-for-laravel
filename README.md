@@ -86,7 +86,7 @@ return [
 | `default_currency` | `string` | `USD` | `COUPONS_CURRENCY` | ISO 4217 code assumed when one is not given explicitly. |
 | `redeemer.track` | `bool` | `true` | `COUPONS_TRACK_REDEEMERS` | Record a `coupon_redemptions` row per redeemer (powers per-redeemer caps). |
 | `code.length` | `int` | `6` | `COUPONS_CODE_LENGTH` | Length of auto-generated codes, `4`–`64`. |
-| `code.charset` | `string` | `A–Z0–9` | `COUPONS_CODE_CHARSET` | Alphabet for auto-generated codes, used exactly as given (case included): at least 2 distinct symbols, no whitespace or control characters. Multibyte symbols are fine. |
+| `code.charset` | `string` | `A–Z0–9` | `COUPONS_CODE_CHARSET` | Alphabet for auto-generated codes: at least 2 distinct symbols (case-insensitively), no whitespace or control characters. It is upper-cased like every code. Multibyte symbols are fine. |
 | `route_key` | `string` | `code` | `COUPONS_ROUTE_KEY` | Column used for route-model binding of `{coupon}`. Set to `id` to bind by primary key. |
 
 The package ships sensible defaults and works with zero configuration.
@@ -97,6 +97,12 @@ throws `InvalidCouponConfiguration` (a `CouponException`) naming the key, never 
 A generated code is checked against every existing coupon, soft-deleted ones included; if 10
 candidates in a row are taken, the code space is too small and the same exception tells you
 to widen it (or pass an explicit code). Explicit codes are never checked against the format.
+
+Codes are **case-insensitive**. Every code is stored trimmed and upper-cased (`' summer '` is
+stored as `SUMMER`), and every lookup — `find()`, `exists()`, `check()`, `preview()`,
+`redeem()`, `expireAll()`, the validation rule, `whereCode()`, `hasRedeemed()` and `{coupon}`
+route binding — normalises the code the same way, so matching and uniqueness never depend on
+your database's collation.
 
 ### Money, units & the currency lock
 
