@@ -28,8 +28,9 @@ final readonly class CreateCouponAction
      * Create and persist a coupon. Pass $quiet to skip the CouponCreated event,
      * for seeders and fixtures that don't want listeners to fire.
      *
-     * @throws InvalidCouponDefinition when a fixed coupon has no currency, a percentage is
-     *                                 outside 0..10000 basis points, or a fixed value is negative.
+     * @throws InvalidCouponDefinition when the explicit code is blank, a fixed coupon has no
+     *                                 currency, a percentage is outside 0..10000 basis points,
+     *                                 or a fixed value is negative.
      * @throws CurrencyMismatch when the minimum spend or cap is in another currency than the coupon.
      * @throws InvalidCouponConfiguration when a code must be generated and `coupons.code.*` is
      *                                    unusable or its code space is exhausted.

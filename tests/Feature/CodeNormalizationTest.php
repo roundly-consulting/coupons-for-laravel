@@ -4,7 +4,10 @@ declare(strict_types=1);
 
 use Illuminate\Support\Facades\Validator;
 use RoundlyConsulting\Coupons\Enums\DiscountType;
+use RoundlyConsulting\Coupons\Enums\RedemptionFailureReason;
 use RoundlyConsulting\Coupons\Exceptions\CouponCodeTaken;
+use RoundlyConsulting\Coupons\Exceptions\CouponNotFound;
+use RoundlyConsulting\Coupons\Exceptions\InvalidCouponDefinition;
 use RoundlyConsulting\Coupons\Facades\Coupons;
 use RoundlyConsulting\Coupons\Models\Coupon;
 use RoundlyConsulting\Coupons\Rules\Redeemable;
@@ -98,4 +101,26 @@ it('matches codes case-insensitively on the fake', function (): void {
     $fake->assertRedeemed('FAKED');
     $fake->assertRedeemed(' faked ');
     $fake->assertNotRedeemed('OTHER');
+});
+
+// Regression: an explicit '' was accepted as a code — and then `check('')` said not_found
+// while `redeem('')` redeemed it. A blank code is refused on create, and no lookup matches one.
+it('refuses a blank explicit code', function (string $blank): void {
+    expect(fn () => Coupons::generate(DiscountType::Percentage, 1000, code: $blank))
+        ->toThrow(InvalidCouponDefinition::class, 'A coupon code cannot be blank.')
+        ->and(Coupon::query()->count())->toBe(0);
+})->with(['empty' => '', 'whitespace' => "  \t "]);
+
+it('refuses a blank explicit code on the fake too', function (): void {
+    $fake = Coupons::fake();
+
+    expect(fn () => Coupons::generate(DiscountType::Percentage, 1000, code: ' '))->toThrow(InvalidCouponDefinition::class);
+
+    $fake->assertNothingCreated();
+});
+
+it('answers a blank code the same way on check and redeem', function (): void {
+    expect(Coupons::check(''))->toBe(RedemptionFailureReason::NotFound)
+        ->and(Coupons::exists(' '))->toBeFalse()
+        ->and(fn () => Coupons::redeem(' ', Money::ofMinor(1000, 'USD')))->toThrow(CouponNotFound::class);
 });

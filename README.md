@@ -330,8 +330,9 @@ $create->execute(new CreateCouponData(
 ));
 ```
 
-`CreateCouponAction` throws `InvalidCouponDefinition` for a `Fixed` coupon without a currency,
-a negative fixed value, or a percentage outside 0..10 000 basis points; a minimum spend or cap
+`CreateCouponAction` throws `InvalidCouponDefinition` for a blank explicit code (`''` or only
+whitespace), a `Fixed` coupon without a currency, a negative fixed value, or a percentage
+outside 0..10 000 basis points; a minimum spend or cap
 in another currency than the lock throws money's `CurrencyMismatch`.
 
 A code is unique among coupons that are **not soft-deleted**. An explicit code a live coupon

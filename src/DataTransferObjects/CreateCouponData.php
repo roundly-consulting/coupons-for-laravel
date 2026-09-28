@@ -82,11 +82,16 @@ final readonly class CreateCouponData
      * Refuse a definition that breaks a coupon invariant. `$code` is the code the coupon will
      * hold (generated or normalised), named in the error.
      *
-     * @throws InvalidCouponDefinition when a fixed coupon has no currency or a negative value,
-     *                                 or a percentage is outside 0..10000 basis points.
+     * @throws InvalidCouponDefinition when the code is blank, a fixed coupon has no currency
+     *                                 or a negative value, or a percentage is outside
+     *                                 0..10000 basis points.
      */
     public function assertValid(string $code): void
     {
+        if ($code === '') {
+            throw InvalidCouponDefinition::blankCode();
+        }
+
         if ($this->type === DiscountType::Fixed) {
             if ($this->lockedCurrency() === null) {
                 throw InvalidCouponDefinition::fixedWithoutCurrency($code);
