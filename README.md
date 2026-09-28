@@ -261,9 +261,15 @@ $fake->assertNothingPruned();
 ```
 
 Reads on the fake check the coupons created on it first, then the database. An unknown code
-behaves like a fresh, unrestricted coupon: `check()` returns `null` and `redeem()` records a
-success, so a check-then-redeem flow works without seeding. A refused redemption is recorded as
-a failure and never counts as redeemed. The fake never throws. To test a refusal, seed a
+behaves like a fresh, unrestricted, zero-value coupon: `check()` returns `null` and `redeem()`
+records a success, so a check-then-redeem flow works without seeding. Coupons created on the
+fake count as active too. A **database row** gets the real checks: a seeded coupon nobody
+activated is refused as `Expired`, exactly as in production. A successful faked redemption
+returns the discount and total the real one would compute (a 20 % coupon on €50.00 gives
+`discount` 10.00 and `total` 40.00); a refused one returns a zero discount and the full price,
+is recorded as a failure, and never counts as redeemed. `redeem()` never throws on the fake.
+`create()` and `generate()` refuse the same invalid definitions as the real ones
+(`InvalidCouponDefinition`), but don't check that a code is taken. To test a refusal, seed a
 coupon, either on the fake (`Coupons::generate(...)`) or as a row.
 
 ### Discount types

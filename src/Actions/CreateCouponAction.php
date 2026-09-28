@@ -7,7 +7,6 @@ namespace RoundlyConsulting\Coupons\Actions;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Random\Randomizer;
 use RoundlyConsulting\Coupons\DataTransferObjects\CreateCouponData;
-use RoundlyConsulting\Coupons\Enums\DiscountType;
 use RoundlyConsulting\Coupons\Events\CouponCreated;
 use RoundlyConsulting\Coupons\Exceptions\CouponCodeTaken;
 use RoundlyConsulting\Coupons\Exceptions\InvalidCouponConfiguration;
@@ -41,7 +40,7 @@ final readonly class CreateCouponAction
     {
         $code = $data->code === null ? $this->createUniqueCode() : CodeFormat::normalize($data->code);
 
-        $this->assertValid($data, $code);
+        $data->assertValid($code);
 
         if ($data->code !== null && $this->newModelInstance()->newQuery()->whereCode($code)->exists()) {
             throw CouponCodeTaken::forCode($code);
@@ -72,23 +71,6 @@ final readonly class CreateCouponAction
         }
 
         return $coupon;
-    }
-
-    private function assertValid(CreateCouponData $data, string $code): void
-    {
-        if ($data->type === DiscountType::Fixed) {
-            if ($data->lockedCurrency() === null) {
-                throw InvalidCouponDefinition::fixedWithoutCurrency($code);
-            }
-
-            if ($data->value < 0) {
-                throw InvalidCouponDefinition::negativeValue($data->value);
-            }
-        }
-
-        if ($data->type === DiscountType::Percentage && ($data->value < 0 || $data->value > 10_000)) {
-            throw InvalidCouponDefinition::percentOutOfRange($data->value);
-        }
     }
 
     /**

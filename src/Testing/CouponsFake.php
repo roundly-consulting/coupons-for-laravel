@@ -25,8 +25,8 @@ use RoundlyConsulting\Money\Money;
  *
  * Reads look at the coupons created on the fake first, then at the database. An unknown
  * code is treated as a fresh, unrestricted coupon, so `check()` answers null and `redeem()`
- * records a success — check-then-redeem flows work without seeding. Seed a coupon (on the
- * fake or as a row) to exercise a refusal.
+ * records a success — check-then-redeem flows work without seeding. A database row gets the
+ * real checks. Seed a coupon (on the fake or as a row) to exercise a refusal.
  */
 final class CouponsFake extends CouponManager
 {
@@ -48,12 +48,20 @@ final class CouponsFake extends CouponManager
     /** @var list<array{days: int, force: bool}> */
     private array $pruned = [];
 
+    /**
+     * Builds the coupon in memory (nothing is saved), refusing the same invalid definitions
+     * the real create does.
+     */
     public function create(CreateCouponData $data): Coupon
     {
+        $code = $data->code === null ? 'FAKE-'.(count($this->created) + 1) : CodeFormat::normalize($data->code);
+
+        $data->assertValid($code);
+
         $coupon = new Coupon([
             'type' => $data->type,
             'value' => $data->value,
-            'code' => $data->code ?? 'FAKE-'.(count($this->created) + 1),
+            'code' => $code,
             'max_usage' => $data->maxUsage,
             'currency' => $data->lockedCurrency(),
             'minimum_spend' => $data->minimumSpend,
@@ -110,21 +118,24 @@ final class CouponsFake extends CouponManager
 
     /**
      * Records a success or — when the coupon would be refused — a failure, and never
-     * throws. The returned result carries a zero discount.
+     * throws. A success carries the discount and total the real redemption would compute;
+     * a refusal carries a zero discount and the full price.
      */
     public function redeem(Coupon|string $coupon, Money $price, ?Model $redeemer = null): RedemptionResult
     {
         $model = $this->resolveOrMake($coupon);
 
+        $reason = $this->failureFor($model, $price, $redeemer);
+
+        $discount = $reason === null ? $model->discountFor($price) : Money::zero($price->currency());
+
         $result = new RedemptionResult(
             coupon: $model,
-            discount: Money::zero($price->currency()),
-            total: $price,
+            discount: $discount,
+            total: $price->subtract($discount),
             redeemer: $redeemer,
             freeShipping: $model->isFreeShipping(),
         );
-
-        $reason = $this->failureFor($model, $price, $redeemer);
 
         if ($reason !== null) {
             $this->failed[] = ['code' => $model->code, 'reason' => $reason];
@@ -324,15 +335,17 @@ final class CouponsFake extends CouponManager
     }
 
     /**
-     * The guard reason the fake reports, or null. It deliberately ignores the "inactive"
-     * reason for a coupon that has neither an activation nor an expiry date — a freshly
-     * faked coupon — so a plain redeem of one still counts as a success.
+     * The guard reason the fake reports, or null. It waives the "inactive" reason only for an
+     * in-memory coupon — created on the fake, or unknown — that has neither an activation
+     * nor an expiry date, so a plain redeem of one still counts as a success. A database row
+     * gets the real check: one nobody activated is refused, exactly as in production.
      */
     private function failureFor(Coupon $coupon, ?Money $price, ?Model $redeemer): ?RedemptionFailureReason
     {
         $reason = $this->container->make(RedemptionGuard::class)->firstFailure($coupon, $price, $redeemer);
 
         if ($reason === RedemptionFailureReason::Expired
+            && ! $coupon->exists
             && $coupon->activated_at === null
             && $coupon->expires_at === null) {
             return null;

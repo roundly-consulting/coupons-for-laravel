@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace RoundlyConsulting\Coupons\DataTransferObjects;
 
 use RoundlyConsulting\Coupons\Enums\DiscountType;
+use RoundlyConsulting\Coupons\Exceptions\InvalidCouponDefinition;
 use RoundlyConsulting\Money\Currency;
 use RoundlyConsulting\Money\Money;
 use RoundlyConsulting\Money\Percentage;
@@ -75,6 +76,30 @@ final readonly class CreateCouponData
             maxUsage: $maxUsage,
             minimumSpend: $minimumSpend,
         );
+    }
+
+    /**
+     * Refuse a definition that breaks a coupon invariant. `$code` is the code the coupon will
+     * hold (generated or normalised), named in the error.
+     *
+     * @throws InvalidCouponDefinition when a fixed coupon has no currency or a negative value,
+     *                                 or a percentage is outside 0..10000 basis points.
+     */
+    public function assertValid(string $code): void
+    {
+        if ($this->type === DiscountType::Fixed) {
+            if ($this->lockedCurrency() === null) {
+                throw InvalidCouponDefinition::fixedWithoutCurrency($code);
+            }
+
+            if ($this->value < 0) {
+                throw InvalidCouponDefinition::negativeValue($this->value);
+            }
+        }
+
+        if ($this->type === DiscountType::Percentage && ($this->value < 0 || $this->value > 10_000)) {
+            throw InvalidCouponDefinition::percentOutOfRange($this->value);
+        }
     }
 
     /**

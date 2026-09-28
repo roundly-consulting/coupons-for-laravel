@@ -7,6 +7,7 @@ use RoundlyConsulting\Coupons\CouponManager;
 use RoundlyConsulting\Coupons\DataTransferObjects\CreateCouponData;
 use RoundlyConsulting\Coupons\Enums\DiscountType;
 use RoundlyConsulting\Coupons\Enums\RedemptionFailureReason;
+use RoundlyConsulting\Coupons\Exceptions\InvalidCouponDefinition;
 use RoundlyConsulting\Coupons\Facades\Coupons;
 use RoundlyConsulting\Coupons\Models\Coupon;
 use RoundlyConsulting\Coupons\Rules\Redeemable;
@@ -345,3 +346,55 @@ it('validates through the fake', function (): void {
     expect(validator(['code' => 'UNSEEDED'], ['code' => new Redeemable])->passes())->toBeTrue()
         ->and(validator(['code' => ['not-a-string']], ['code' => new Redeemable])->fails())->toBeTrue();
 });
+
+// Regression: the fake waived the "not active" refusal for every coupon with neither date,
+// database rows included — so a seeded coupon the app forgot to activate was redeemable under
+// the fake while the real check reported it expired, hiding the production bug.
+it('refuses a seeded coupon that was never activated, like the real check', function (): void {
+    $row = Coupon::factory()->percentage(2000)->create(['code' => 'NEVERACTIVE']);
+    $fake = Coupons::fake();
+
+    $result = Coupons::redeem('NEVERACTIVE', Money::ofMinor(5000, 'EUR'));
+
+    expect(Coupons::check('NEVERACTIVE'))->toBe(RedemptionFailureReason::Expired)
+        ->and($row->isRedeemableBy())->toBeFalse()
+        ->and($result->discount->isZero())->toBeTrue()
+        ->and($result->total->minor())->toBe('5000');
+
+    $fake->assertRedemptionFailed('NEVERACTIVE', RedemptionFailureReason::Expired);
+    $fake->assertNothingRedeemed();
+});
+
+// Regression: the fake's redeem() always returned a zero discount and the full price, so code
+// reading `$result->total` behaved differently under the fake than in production.
+it('returns the real discount and total from a faked redemption', function (): void {
+    Coupon::factory()->active()->fixed(750, 'EUR')->create(['code' => 'ROW']);
+    $fake = Coupons::fake();
+    Coupons::create(CreateCouponData::percentage(20, 'TWENTY'));
+    $cart = Money::ofMinor(5000, 'EUR');
+
+    $percent = Coupons::redeem('TWENTY', $cart);
+    $fixed = Coupons::redeem('ROW', $cart);
+    $unseeded = Coupons::redeem('UNSEEDED', $cart);
+
+    expect($percent->discount->minor())->toBe('1000')
+        ->and($percent->total->minor())->toBe('4000')
+        ->and($fixed->discount->minor())->toBe('750')
+        ->and($fixed->total->minor())->toBe('4250')
+        ->and($unseeded->discount->isZero())->toBeTrue()
+        ->and($unseeded->total->minor())->toBe('5000');
+
+    $fake->assertRedeemed('TWENTY', fn ($result): bool => $result->total->minor() === '4000');
+});
+
+it('refuses the same invalid definitions the real create does', function (DiscountType $type, int $value, ?string $currency): void {
+    $fake = Coupons::fake();
+
+    expect(fn () => Coupons::generate($type, $value, 'INVALID', currency: $currency))->toThrow(InvalidCouponDefinition::class);
+
+    $fake->assertNothingCreated();
+})->with([
+    'fixed without a currency' => [DiscountType::Fixed, 500, null],
+    'negative fixed value' => [DiscountType::Fixed, -1, 'EUR'],
+    'percentage out of range' => [DiscountType::Percentage, 10_001, null],
+]);
