@@ -118,6 +118,148 @@ without a minimum spend or cap may stay unlocked and apply to any currency.
 
 ## Usage
 
+### The `Coupons` facade
+
+`Coupons` is the entry point for everything the package does:
+
+```php
+use RoundlyConsulting\Coupons\Facades\Coupons;
+use RoundlyConsulting\Coupons\Enums\DiscountType;
+use RoundlyConsulting\Money\Money;
+
+$coupon = Coupons::generate(DiscountType::Percentage, value: 2000, code: 'SUMMER', maxUsage: 100); // 20 %
+$coupon = Coupons::generate(DiscountType::Fixed, value: 500, code: 'FIVE', currency: 'EUR');       // €5.00
+$coupon = Coupons::create($data);         // from a CreateCouponData
+$coupon = Coupons::createQuietly($data);  // without dispatching CouponCreated (seeders, fixtures)
+
+// One coupon, by code or model:
+Coupons::code('SUMMER')->check($cart, $user);   // ?RedemptionFailureReason — null = redeemable
+Coupons::code('SUMMER')->preview($cart);        // Money — the discount, without redeeming
+Coupons::code('SUMMER')->redeem($cart, $user);  // RedemptionResult
+Coupons::code('SUMMER')->revoke();              // expire it now (reversible), fires CouponRevoked
+
+// The same verbs, flat:
+Coupons::check('SUMMER', $cart, $user);
+Coupons::preview($coupon, $cart);
+Coupons::redeem('SUMMER', $cart, redeemer: $user);
+Coupons::revoke($coupon);                 // a Coupon or a code
+
+// Lookups:
+Coupons::find('SUMMER');                  // ?Coupon
+Coupons::findOrFail('SUMMER');            // throws CouponNotFound
+Coupons::exists('SUMMER');                // bool
+Coupons::redeemable()->get();             // query builder of coupons redeemable right now
+
+// Maintenance (the console commands call these):
+Coupons::expireAll();                     // revoke every live coupon; returns the count
+Coupons::expireAll(code: 'SUMMER');       // only the live coupon holding that code
+Coupons::prune(days: 30);                 // soft-delete coupons expired 30+ days ago; returns the count
+Coupons::prune(days: 30, force: true);    // delete them permanently, previously trashed ones included
+```
+
+`check()` answers "why won't this code work?" before checkout. It runs the same checks, in the
+same order, as `redeem()` and returns the first failing `RedemptionFailureReason` (`NotFound`,
+`CurrencyMismatch`, `MinimumSpendNotMet`, `Expired`, `AtMaxUsage`, `AlreadyRedeemed`), or `null`.
+It never throws, locks or writes. The cart total and the redeemer are both optional: without a
+total it skips the currency and minimum-spend checks, and without a redeemer it skips the
+per-redeemer cap. `$reason->translationKey()` gives you the same translatable message the
+validation rule shows.
+
+```php
+if ($reason = Coupons::code($request->code)->check($cart, $request->user())) {
+    return back()->withErrors(['code' => __($reason->translationKey(), ['code' => $request->code])]);
+}
+
+$discount = Coupons::code($request->code)->preview($cart); // show it before the order is placed
+```
+
+`preview()` never throws on a currency mismatch; it returns zero. It does throw `CouponNotFound`
+for an unknown code. `redeem()` and `revoke()` accept a code or a `Coupon`.
+
+A new coupon starts **inactive** (`activated_at` is null), so redeeming it throws
+`CouponExpired` until you activate it: `$coupon->activate()->save()` (or pass a future
+`CarbonInterface` to schedule it).
+
+`revoke()` is a reversible kill-switch. It sets `expires_at` to now (the row is **not**
+deleted) and fires `CouponRevoked`. Re-activate later with `$coupon->expire($future)->save()`
+or by clearing `expires_at`. `prune()` refuses a negative window with an
+`InvalidArgumentException`, because a window in the future would delete live coupons.
+
+### Without the facade
+
+The facade is a thin layer over `CouponManager`. Inject the manager to get the same API without
+the facade:
+
+```php
+use RoundlyConsulting\Coupons\CouponManager;
+use RoundlyConsulting\Coupons\DataTransferObjects\RedemptionResult;
+use RoundlyConsulting\Money\Money;
+
+final class ApplyCoupon
+{
+    public function __construct(private CouponManager $coupons) {}
+
+    public function __invoke(string $code, Money $cart, User $user): RedemptionResult
+    {
+        return $this->coupons->code($code)->redeem($cart, $user);
+    }
+}
+```
+
+Each operation is also a plain action class you can resolve and run yourself:
+
+```php
+use RoundlyConsulting\Coupons\Actions\{CheckCouponAction, CreateCouponAction, ExpireCouponsAction,
+    PruneCouponsAction, RedeemCouponAction, RevokeCouponAction};
+use RoundlyConsulting\Coupons\DataTransferObjects\RedeemCouponData;
+
+app(CheckCouponAction::class)->execute('SUMMER', $cart, $user);   // ?RedemptionFailureReason
+app(RedeemCouponAction::class)->execute(new RedeemCouponData(coupon: 'SUMMER', price: $cart, redeemer: $user));
+app(RevokeCouponAction::class)->execute($coupon);
+app(ExpireCouponsAction::class)->execute();                       // int
+app(PruneCouponsAction::class)->execute(days: 30, force: false);  // int
+```
+
+The model (`$coupon->redeemBy()`, `$coupon->isRedeemableBy()`), the `HasCoupons` trait
+(`$user->redeemCoupon()`), the validation rule and both console commands all go through the
+manager, so the fake below sees every call.
+
+### Testing with the fake
+
+`Coupons::fake()` swaps the manager, for the facade and for every injected `CouponManager`, with
+a recorder that writes nothing: no rows and no events. It records every mutation, including
+redemptions made through `$coupon->redeemBy()` and `$user->redeemCoupon()`:
+
+```php
+use RoundlyConsulting\Coupons\Enums\RedemptionFailureReason;
+use RoundlyConsulting\Coupons\Facades\Coupons;
+use RoundlyConsulting\Money\Money;
+
+$fake = Coupons::fake();
+
+// ... run the code under test ...
+
+$fake->assertCreated();                                             // or a callback: fn (Coupon $c) => …
+$fake->assertNothingCreated();
+$fake->assertRedeemed('SUMMER');                                    // by code
+$fake->assertRedeemed('SUMMER', fn ($result) => /* ... */ true);    // by code + callback
+$fake->assertRedeemed(callback: fn ($result) => /* ... */ true);    // by callback only
+$fake->assertNotRedeemed('OTHER');
+$fake->assertNothingRedeemed();
+$fake->assertRedemptionFailed('OLD', RedemptionFailureReason::Expired); // reason optional; a string works too
+$fake->assertRevoked('SUMMER');                                     // code optional
+$fake->assertExpiredAll();
+$fake->assertNothingRevoked();                                      // no revoke() and no expireAll()
+$fake->assertPruned(days: 30, force: false);                        // both optional
+$fake->assertNothingPruned();
+```
+
+Reads on the fake check the coupons created on it first, then the database. An unknown code
+behaves like a fresh, unrestricted coupon: `check()` returns `null` and `redeem()` records a
+success, so a check-then-redeem flow works without seeding. A refused redemption is recorded as
+a failure and never counts as redeemed. The fake never throws. To test a refusal, seed a
+coupon, either on the fake (`Coupons::generate(...)`) or as a row.
+
 ### Discount types
 
 The `DiscountType` enum names how a coupon's value applies; the math is money-for-laravel's
@@ -144,41 +286,9 @@ DiscountType::Percentage->description();   // "Subtracts a percentage of the pri
 DiscountType::FreeShipping->requiresValue(); // false (Fixed/Percentage are true)
 ```
 
-### The `Coupons` facade
-
-The `Coupons` facade is the discoverable entry point — generate, find, and redeem in one call.
-
-```php
-use RoundlyConsulting\Coupons\Facades\Coupons;
-use RoundlyConsulting\Coupons\Enums\DiscountType;
-use RoundlyConsulting\Money\Money;
-
-$coupon = Coupons::generate(DiscountType::Percentage, value: 2000, code: 'SAVE20', maxUsage: 100); // 20 %
-$coupon = Coupons::generate(DiscountType::Fixed, value: 500, code: 'FIVE', currency: 'EUR');       // €5.00
-
-$coupon = Coupons::find('SAVE20');        // ?Coupon
-$coupon = Coupons::findOrFail('SAVE20');  // throws CouponNotFound
-
-$result = Coupons::redeem('SAVE20', Money::ofMinor(5000, 'EUR'), redeemer: $user);
-
-Coupons::exists('SAVE20');                // bool
-Coupons::redeemable()->get();             // query builder of redeemable coupons
-Coupons::revoke('SAVE20');                // expire it now (reversible), fires CouponRevoked
-Coupons::createQuietly($data);            // create without dispatching CouponCreated
-```
-
-A new coupon starts **inactive** (`activated_at` is null), so redeeming it throws
-`CouponExpired` until you activate it: `$coupon->activate()->save()` (or pass a future
-`CarbonInterface` to schedule it).
-
-`revoke()` is a reversible kill-switch: it sets `expires_at` to now (the row is **not**
-deleted) and fires `CouponRevoked`. Re-activate later with `$coupon->expire($future)->save()`
-or by clearing `expires_at`. `createQuietly()` is for seeders and fixtures that don't want
-`CouponCreated` listeners to fire.
-
 ### Creating coupons
 
-Use the facade, or `CreateCouponAction` with a `CreateCouponData` DTO. A unique code is
+Use the facade (`Coupons::create($data)`), or `CreateCouponAction` with a `CreateCouponData` DTO. A unique code is
 generated when you don't supply one, and a `CouponCreated` event is dispatched.
 
 ```php
@@ -224,13 +334,13 @@ per-redeemer row when tracking is on, and dispatches `CouponRedeemed`. It return
 use RoundlyConsulting\Coupons\Facades\Coupons;
 use RoundlyConsulting\Money\Money;
 
-$result = Coupons::redeem('SAVE20', Money::ofMinor(5000, 'EUR'), redeemer: $user);
+$result = Coupons::code('SAVE20')->redeem(Money::ofMinor(5000, 'EUR'), $user);
 
 $result->discount;      // Money saved off the price — never more than the price
 $result->total;         // new total after the discount
 $result->freeShipping;  // true for a free-shipping coupon — zero your own shipping line
 
-// Fluent equivalent on the model (redeemer may be null for guest checkout):
+// The same redemption from the model (redeemer may be null for guest checkout):
 $result = $coupon->redeemBy($user, Money::ofMinor(5000, 'EUR'));
 ```
 
@@ -285,8 +395,9 @@ $coupon->isRedeemableBy($user, $cart); // bool — no exceptions; pass a price t
 $coupon->previewDiscount($cart);      // Money — never throws; zero on a currency mismatch
 ```
 
-`isRedeemableBy()` and the validation rule below both run the **same** eligibility checks as
-`redeem()`, so they never drift out of sync.
+`isRedeemableBy()`, `Coupons::check()` and the validation rule below all run the **same**
+eligibility checks as `redeem()`, so they never drift out of sync. Use `Coupons::check()` when
+you need the reason, not just a yes or no.
 
 ### Redeemer trait
 
@@ -346,36 +457,15 @@ bind by primary key).
 ### Console commands
 
 ```bash
-# Immediately expire coupons (admin kill-switch). --code limits it to one coupon.
-# Each one is revoked like Coupons::revoke(): CouponRevoked fires per coupon.
+# Immediately expire coupons (admin kill-switch) — Coupons::expireAll(). --code limits it to
+# one coupon. Each one is revoked like Coupons::revoke(): CouponRevoked fires per coupon.
 php artisan coupons:expire
 php artisan coupons:expire --code=SAVE20
 
-# Prune coupons expired more than N days ago (soft delete; --force hard-deletes).
+# Prune coupons expired more than N days ago — Coupons::prune(). Soft deletes; --force deletes
+# permanently, including coupons an earlier prune soft-deleted. A negative --days is refused.
 php artisan coupons:prune --days=30
 php artisan coupons:prune --days=30 --force
-```
-
-### Testing with the fake
-
-`Coupons::fake()` swaps the container binding for a recorder that performs no database
-writes, with assertion helpers:
-
-```php
-use RoundlyConsulting\Coupons\Facades\Coupons;
-use RoundlyConsulting\Money\Money;
-
-$fake = Coupons::fake();
-
-Coupons::redeem('SAVE20', Money::ofMinor(5000, 'EUR'), redeemer: $user);
-
-$fake->assertRedeemed('SAVE20');                                   // by code
-$fake->assertRedeemed('SAVE20', fn ($result) => /* ... */ true);   // by code + callback
-$fake->assertRedeemed(callback: fn ($result) => /* ... */ true);   // by callback only
-$fake->assertNotRedeemed('OTHER');
-$fake->assertRedemptionFailed('OLD', 'expired');                   // reason optional
-$fake->assertNothingRedeemed();
-$fake->assertCreated();
 ```
 
 ### Working with a coupon
@@ -414,7 +504,7 @@ The package dispatches these events the host app can listen to:
 | `CouponRedeemed` | a redemption succeeds | `Coupon $coupon`, `RedemptionResult $result` |
 | `CouponRedemptionFailed` | a redemption attempt is rejected | `string $code`, `RedemptionFailureReason $reason`, `?Model $redeemer` |
 | `CouponExhausted` | a redemption consumes the final available use (fires **once**) | `Coupon $coupon` |
-| `CouponRevoked` | a coupon is revoked via `Coupons::revoke()` or `coupons:expire` (once per coupon) | `Coupon $coupon` |
+| `CouponRevoked` | a coupon is revoked via `Coupons::revoke()`, `Coupons::expireAll()` or `coupons:expire` (once per coupon) | `Coupon $coupon` |
 
 ```php
 use Illuminate\Support\Facades\Event;
