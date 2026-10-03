@@ -26,7 +26,8 @@ return [
     | The key type used for the polymorphic redeemer column on coupon redemptions.
     | Use "uuid" or "ulid" when the models that redeem coupons use UUID/ULID primary
     | keys, otherwise leave it as "bigint". Your redeemer models must share one key
-    | type; set this to match them. Any unrecognized value falls back to "bigint".
+    | type; set this to match them. Anything else throws an
+    | InvalidConfigurationException naming the key.
     |
     | Supported: "bigint", "uuid", "ulid"
     |
@@ -55,7 +56,8 @@ return [
     | When enabled, every redemption that carries a redeemer is recorded in the
     | coupon_redemptions table, which powers per-redeemer usage caps. Disable to
     | skip writing redemption rows; the global usage cap still applies. Env-style
-    | values work: "1"/"true"/"on"/"yes" and "0"/"false"/"off"/"no".
+    | values work: "1"/"true"/"on"/"yes" and "0"/"false"/"off"/"no". Anything else
+    | throws an InvalidConfigurationException naming the key.
     |
     */
 

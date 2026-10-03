@@ -84,9 +84,9 @@ return [
 | Key | Type | Default | Env | Purpose |
 |---|---|---|---|---|
 | `model` | `class-string` | `RoundlyConsulting\Coupons\Models\Coupon` | — | Coupon model. Point it at your own subclass to extend behaviour; the manager, actions and both console commands all use it. |
-| `key_type` | `string` | `bigint` | `COUPONS_KEY_TYPE` | Key type of the polymorphic `redeemer` column on `coupon_redemptions`: `bigint`, `uuid` or `ulid`, matching your redeemer models' primary keys (they must all share one; a `KeyType` case works too). The migration reads it, so set it **before** you migrate. An unrecognised value falls back to `bigint`. |
+| `key_type` | `string` | `bigint` | `COUPONS_KEY_TYPE` | Key type of the polymorphic `redeemer` column on `coupon_redemptions`: `bigint`, `uuid` or `ulid`, matching your redeemer models' primary keys (they must all share one; a `KeyType` case works too). The migration reads it, so set it **before** you migrate. Anything else throws an `InvalidConfigurationException` naming the key. |
 | `default_currency` | `string` | `USD` | `COUPONS_CURRENCY` | ISO 4217 code the shipped `CouponFactory` locks fixed and capped coupons to when a state names none (also shown by `about`). Redemption never assumes a currency: it always takes the cart total's. |
-| `redeemer.track` | `bool` | `true` | `COUPONS_TRACK_REDEEMERS` | Record a `coupon_redemptions` row per redeemer (powers per-redeemer caps). Env-style values work: `1`/`true`/`on`/`yes` and `0`/`false`/`off`/`no`; anything unparseable keeps tracking on. |
+| `redeemer.track` | `bool` | `true` | `COUPONS_TRACK_REDEEMERS` | Record a `coupon_redemptions` row per redeemer (powers per-redeemer caps). Env-style values work: `1`/`true`/`on`/`yes` and `0`/`false`/`off`/`no`; anything else throws an `InvalidConfigurationException` naming the key. |
 | `code.length` | `int` | `6` | `COUPONS_CODE_LENGTH` | Length of auto-generated codes, `4`–`64`. |
 | `code.charset` | `string` | `A–Z0–9` | `COUPONS_CODE_CHARSET` | Alphabet for auto-generated codes: at least 2 distinct symbols (case-insensitively), no whitespace or control characters. It is upper-cased like every code. Multibyte symbols are fine. |
 | `route_key` | `string` | `code` | `COUPONS_ROUTE_KEY` | Column used for route-model binding of `{coupon}`. Set to `id` to bind by primary key. |
