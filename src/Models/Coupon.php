@@ -21,6 +21,7 @@ use RoundlyConsulting\Coupons\DataTransferObjects\RedemptionResult;
 use RoundlyConsulting\Coupons\Enums\DiscountType;
 use RoundlyConsulting\Coupons\Exceptions\InvalidCouponDefinition;
 use RoundlyConsulting\Coupons\Support\CodeFormat;
+use RoundlyConsulting\Coupons\Support\CouponConfig;
 use RoundlyConsulting\Money\Casts\AsCurrency;
 use RoundlyConsulting\Money\Casts\AsMoney;
 use RoundlyConsulting\Money\Currency;
@@ -173,10 +174,7 @@ class Coupon extends Model
 
     public function getRouteKeyName(): string
     {
-        /** @var string $key */
-        $key = config('coupons.route_key', 'code');
-
-        return $key;
+        return CouponConfig::routeKey();
     }
 
     /**

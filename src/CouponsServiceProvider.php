@@ -4,9 +4,12 @@ declare(strict_types=1);
 
 namespace RoundlyConsulting\Coupons;
 
+use Closure;
 use RoundlyConsulting\Coupons\Commands\ExpireCouponsCommand;
 use RoundlyConsulting\Coupons\Commands\PruneCouponsCommand;
+use RoundlyConsulting\Coupons\Exceptions\InvalidCouponConfiguration;
 use RoundlyConsulting\Coupons\Support\CodeFormat;
+use RoundlyConsulting\Coupons\Support\CouponConfig;
 use RoundlyConsulting\Coupons\Support\CouponModel;
 use RoundlyConsulting\Coupons\Support\RedemptionGuard;
 use RoundlyConsulting\PackageToolkit\Concerns\RegistersBlueprintMacros;
@@ -31,12 +34,12 @@ final class CouponsServiceProvider extends PackageServiceProvider
             ])
             ->contributesToAbout(static fn (): array => [
                 'Model' => class_basename(CouponModel::class()),
-                'Default currency' => self::currency(),
+                'Default currency' => self::orInvalid(CouponConfig::defaultCurrency(...)),
                 'Redeemer tracking' => Config::boolean('coupons.redeemer.track', true) ? 'ON' : 'OFF',
                 // The alphabet is reported by size only: printing it would hand a
                 // brute-forcer the exact key space generated codes are drawn from.
                 'Generated codes' => CodeFormat::describe(),
-                'Route key' => self::routeKey(),
+                'Route key' => self::orInvalid(CouponConfig::routeKey(...)),
             ]);
     }
 
@@ -57,17 +60,18 @@ final class CouponsServiceProvider extends PackageServiceProvider
         $this->registerBlueprintMacros();
     }
 
-    private static function currency(): string
+    /**
+     * A strict read for the `about` row: a broken value renders as INVALID (with the reason)
+     * rather than as the default it no longer falls back to, and `about` keeps working.
+     *
+     * @param  Closure(): string  $read
+     */
+    private static function orInvalid(Closure $read): string
     {
-        $currency = config('coupons.default_currency', 'USD');
-
-        return is_string($currency) && $currency !== '' ? $currency : 'USD';
-    }
-
-    private static function routeKey(): string
-    {
-        $key = config('coupons.route_key', 'code');
-
-        return is_string($key) && $key !== '' ? $key : 'code';
+        try {
+            return $read();
+        } catch (InvalidCouponConfiguration $e) {
+            return 'INVALID: '.$e->getMessage();
+        }
     }
 }

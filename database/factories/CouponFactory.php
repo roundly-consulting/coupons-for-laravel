@@ -7,6 +7,7 @@ namespace RoundlyConsulting\Coupons\Database\Factories;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use RoundlyConsulting\Coupons\Enums\DiscountType;
 use RoundlyConsulting\Coupons\Models\Coupon;
+use RoundlyConsulting\Coupons\Support\CouponConfig;
 use RoundlyConsulting\Money\Money;
 
 /** @extends Factory<Coupon> */
@@ -123,8 +124,6 @@ final class CouponFactory extends Factory
 
     private static function defaultCurrency(): string
     {
-        $currency = config('coupons.default_currency', 'USD');
-
-        return is_string($currency) && $currency !== '' ? $currency : 'USD';
+        return CouponConfig::defaultCurrency();
     }
 }
