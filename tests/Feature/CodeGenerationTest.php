@@ -69,6 +69,15 @@ it('reads the length from an env-style numeric string', function (): void {
     expect(generatedCode())->toMatch('/^[A-Z0-9]{9}$/');
 });
 
+it('falls back to the shipped format when the keys are blank', function (string $blank): void {
+    config()->set('coupons.code.length', $blank);
+    config()->set('coupons.code.charset', $blank);
+
+    expect(CodeFormat::length())->toBe(6)
+        ->and(implode('', CodeFormat::symbols()))->toBe(CodeFormat::DEFAULT_CHARSET)
+        ->and(generatedCode())->toMatch('/^[A-Z0-9]{6}$/');
+})->with(['empty' => '', 'whitespace' => '  ']);
+
 it('falls back to the shipped format when the keys are absent', function (): void {
     config()->set('coupons.code', null);
 
@@ -101,8 +110,7 @@ it('rejects an unusable alphabet', function (mixed $charset, string $reason): vo
     expect(fn () => generatedCode())->toThrow(InvalidCouponConfiguration::class, $reason);
     expect(Coupon::query()->count())->toBe(0);
 })->with([
-    'empty' => ['', 'non-empty string'],
-    'not a string' => [['A', 'B'], 'non-empty string'],
+    'not a string' => [['A', 'B'], 'must be a string'],
     'a space' => ['ABC DEF', 'whitespace or control'],
     'a tab' => ["ABC\tDEF", 'whitespace or control'],
     'a newline' => ["ABCDEF\n", 'whitespace or control'],

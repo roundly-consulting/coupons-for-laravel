@@ -38,22 +38,24 @@ final class CodeFormat
     }
 
     /**
-     * The alphabet split into symbols (multibyte-safe), upper-cased like every code. An absent
-     * key falls back to the shipped alphabet; anything present must be a usable one.
+     * The alphabet split into symbols (multibyte-safe), upper-cased like every code. A key
+     * that is not set — absent, null or blank (`''` or whitespace, a host's `KEY=`) — falls
+     * back to the shipped alphabet; anything else must be a usable one.
      *
      * @return list<string>
      *
-     * @throws InvalidCouponConfiguration when the alphabet is empty, not a string, holds
+     * @throws InvalidCouponConfiguration when the alphabet is not a string, holds
      *                                    whitespace/control characters, repeats a symbol
      *                                    (case-insensitively),
      *                                    or has fewer than MIN_SYMBOLS symbols.
      */
     public static function symbols(): array
     {
-        $charset = config('coupons.code.charset') ?? self::DEFAULT_CHARSET;
+        $charset = config('coupons.code.charset');
+        $charset = CouponConfig::blank($charset) ? self::DEFAULT_CHARSET : $charset;
 
-        if (! is_string($charset) || $charset === '') {
-            throw InvalidCouponConfiguration::invalidCharset('must be a non-empty string');
+        if (! is_string($charset)) {
+            throw InvalidCouponConfiguration::invalidCharset('must be a string');
         }
 
         // `preg_match` returns false on invalid UTF-8, which is just as unusable.
