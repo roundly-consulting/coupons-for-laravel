@@ -34,7 +34,7 @@ final class CodeFormat
     public static function length(): int
     {
         return Config::using(InvalidCouponConfiguration::class)
-            ->intBetween('coupons.code.length', self::MIN_LENGTH, self::MAX_LENGTH, self::DEFAULT_LENGTH);
+            ->integer('coupons.code.length', self::DEFAULT_LENGTH, min: self::MIN_LENGTH, max: self::MAX_LENGTH);
     }
 
     /**
