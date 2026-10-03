@@ -7,6 +7,7 @@ use RoundlyConsulting\Coupons\Models\Coupon;
 use RoundlyConsulting\Coupons\Models\CouponRedemption;
 use RoundlyConsulting\Coupons\Tests\Fixtures\Customer;
 use RoundlyConsulting\Money\Money;
+use RoundlyConsulting\PackageToolkit\Exceptions\InvalidConfigurationException;
 
 it('enforces a one-per-customer cap', function (): void {
     $coupon = Coupon::factory()->fixed(500, 'EUR')->active()->create(['max_usage_per_redeemer' => 1]);
@@ -66,3 +67,15 @@ it('reads redeemer tracking from env-style values', function (mixed $track, bool
     'int 0' => [0, false],
     'bool false' => [false, false],
 ]);
+
+it('refuses a mistyped redeemer tracking switch (strict config)', function (): void {
+    config()->set('coupons.redeemer.track', 'disabled');
+    $coupon = Coupon::factory()->fixed(500, 'EUR')->active()->create(['code' => 'ONCE', 'max_usage_per_redeemer' => 1]);
+
+    expect(fn () => $coupon->redeemBy(Customer::query()->create(['name' => 'Ada']), Money::ofMinor(5000, 'EUR')))
+        ->toThrow(
+            InvalidConfigurationException::class,
+            'Configuration value [coupons.redeemer.track] must be a boolean (true/false, 1/0, on/off or yes/no), [disabled] given.',
+        )
+        ->and($coupon->redemptions()->count())->toBe(0);
+});
