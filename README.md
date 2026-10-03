@@ -85,13 +85,15 @@ return [
 |---|---|---|---|---|
 | `model` | `class-string` | `RoundlyConsulting\Coupons\Models\Coupon` | — | Coupon model. Point it at your own subclass to extend behaviour; the manager, actions and both console commands all use it. |
 | `key_type` | `string` | `bigint` | `COUPONS_KEY_TYPE` | Key type of the polymorphic `redeemer` column on `coupon_redemptions`: `bigint`, `uuid` or `ulid`, matching your redeemer models' primary keys (they must all share one; a `KeyType` case works too). The migration reads it, so set it **before** you migrate. Anything else throws an `InvalidConfigurationException` naming the key. |
-| `default_currency` | `string` | `USD` | `COUPONS_CURRENCY` | ISO 4217 code the shipped `CouponFactory` locks fixed and capped coupons to when a state names none (also shown by `about`). Redemption never assumes a currency: it always takes the cart total's. |
+| `default_currency` | `string` | `USD` | `COUPONS_CURRENCY` | ISO 4217 code the shipped `CouponFactory` locks fixed and capped coupons to when a state names none (also shown by `about`). Redemption never assumes a currency: it always takes the cart total's. A blank or non-string value throws `InvalidCouponConfiguration` naming the key. |
 | `redeemer.track` | `bool` | `true` | `COUPONS_TRACK_REDEEMERS` | Record a `coupon_redemptions` row per redeemer (powers per-redeemer caps). Env-style values work: `1`/`true`/`on`/`yes` and `0`/`false`/`off`/`no`; anything else throws an `InvalidConfigurationException` naming the key. |
-| `code.length` | `int` | `6` | `COUPONS_CODE_LENGTH` | Length of auto-generated codes, `4`–`64`. |
+| `code.length` | `int` | `6` | `COUPONS_CODE_LENGTH` | Length of auto-generated codes, `4`–`64`. An integer string such as `"8"` works; `"eight"` or `"8.5"` throws. |
 | `code.charset` | `string` | `A–Z0–9` | `COUPONS_CODE_CHARSET` | Alphabet for auto-generated codes: at least 2 distinct symbols (case-insensitively), no whitespace or control characters. It is upper-cased like every code. Multibyte symbols are fine. |
-| `route_key` | `string` | `code` | `COUPONS_ROUTE_KEY` | Column used for route-model binding of `{coupon}`. Set to `id` to bind by primary key. |
+| `route_key` | `string` | `code` | `COUPONS_ROUTE_KEY` | Column used for route-model binding of `{coupon}`. Set to `id` to bind by primary key. A blank or non-string value throws `InvalidCouponConfiguration` naming the key rather than binding by `code`. |
 
-The package ships sensible defaults and works with zero configuration.
+The package ships sensible defaults and works with zero configuration. A key you remove (or set to
+`null`) takes its default; a key you set to a value of the wrong shape throws instead of falling
+back, and `php artisan about` shows it as `INVALID`.
 
 Generated codes draw every symbol from a cryptographically secure source. The `code.*` keys
 are validated whenever a code is generated: an out-of-range length or an unusable alphabet
