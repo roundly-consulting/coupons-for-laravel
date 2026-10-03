@@ -56,8 +56,9 @@ return [
     | When enabled, every redemption that carries a redeemer is recorded in the
     | coupon_redemptions table, which powers per-redeemer usage caps. Disable to
     | skip writing redemption rows; the global usage cap still applies. Env-style
-    | values work: "1"/"true"/"on"/"yes" and "0"/"false"/"off"/"no". Anything else
-    | throws an InvalidConfigurationException naming the key.
+    | values work: "1"/"true"/"on"/"yes" and "0"/"false"/"off"/"no"; a blank
+    | value (KEY=) is not set, so it stays on. Anything else throws an
+    | InvalidConfigurationException naming the key.
     |
     */
 
@@ -74,7 +75,8 @@ return [
     | which alphabet they are drawn from. Codes are case-insensitive and stored
     | upper-cased, so the alphabet is upper-cased too; it needs at least 2
     | distinct symbols (case-insensitively) with no whitespace or control
-    | characters. Explicit codes are never checked against it.
+    | characters. A blank value (KEY=) is not set, so the default applies.
+    | Explicit codes are never checked against it.
     |
     */
 
