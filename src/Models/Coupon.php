@@ -248,11 +248,14 @@ class Coupon extends Model
 
     /**
      * Whether the given redeemer has reached their per-redeemer cap. A zero cap
-     * means unlimited per redeemer.
+     * means unlimited per redeemer. Never enforced while `coupons.redeemer.track` is off:
+     * no rows are written then, and counting the ones from before the switch would refuse
+     * only the redeemers who happen to have them (remainingUsageFor() answers null too).
      */
     public function isAtMaximumUsageFor(Model $redeemer): bool
     {
         return $this->max_usage_per_redeemer > 0
+            && Config::boolean('coupons.redeemer.track', true)
             && $this->usageBy($redeemer) >= $this->max_usage_per_redeemer;
     }
 

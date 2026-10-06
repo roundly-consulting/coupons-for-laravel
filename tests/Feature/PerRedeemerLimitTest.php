@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use RoundlyConsulting\Coupons\Exceptions\CouponAlreadyRedeemed;
+use RoundlyConsulting\Coupons\Facades\Coupons;
 use RoundlyConsulting\Coupons\Models\Coupon;
 use RoundlyConsulting\Coupons\Models\CouponRedemption;
 use RoundlyConsulting\Coupons\Tests\Fixtures\Customer;
@@ -78,4 +79,23 @@ it('refuses a mistyped redeemer tracking switch (strict config)', function (): v
             'Configuration value [coupons.redeemer.track] must be a boolean (true/false, 1/0, on/off or yes/no), [disabled] given.',
         )
         ->and($coupon->redemptions()->count())->toBe(0);
+});
+
+// Regression: with tracking switched off the guard still counted the rows written while it was
+// on, so the redeemers who had them stayed refused forever while everyone else was unlimited —
+// and remainingUsageFor() already answered null ("not enforced").
+it('stops enforcing the per-redeemer cap once tracking is switched off', function (): void {
+    $coupon = Coupon::factory()->fixed(500, 'EUR')->active()->create(['code' => 'ONCE', 'max_usage_per_redeemer' => 1]);
+    $ada = Customer::query()->create(['name' => 'Ada']);
+
+    $coupon->redeemBy($ada, Money::ofMinor(5000, 'EUR'));
+    config()->set('coupons.redeemer.track', false);
+
+    expect(Coupons::check($coupon, redeemer: $ada))->toBeNull()
+        ->and($coupon->isAtMaximumUsageFor($ada))->toBeFalse()
+        ->and($coupon->remainingUsageFor($ada))->toBeNull()
+        ->and($coupon->redeemBy($ada, Money::ofMinor(5000, 'EUR'))->discount->minor())->toBe('500')
+        // History stays readable: the earlier row is still there, no new one is written.
+        ->and($coupon->usageBy($ada))->toBe(1)
+        ->and($coupon->fresh()?->usage)->toBe(2);
 });

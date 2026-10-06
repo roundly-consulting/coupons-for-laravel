@@ -19,6 +19,9 @@ All notable changes to `coupons-for-laravel` are documented in this file. The fo
   `active()`, `expired()` and `redeemable()` scopes. At that exact instant a coupon
   `redeemable()` lists is no longer refused as expired, and a coupon revoked that instant is
   already refused.
+- With `coupons.redeemer.track` off, the per-redeemer cap is no longer enforced from rows
+  written while tracking was on: `check()`, `redeem()` and `Coupon::isAtMaximumUsageFor()` now
+  agree with `remainingUsageFor()`, which already reported the cap as not enforced.
 
 ## 1.0.1 - 2026-10-04
 
