@@ -97,3 +97,28 @@ it('runs through the manager, so the fake records it', function (): void {
 
     $fake->assertExpiredAll();
 });
+
+// Regression: a blank --code was read as "no code", so `coupons:expire --code="$CODE"` with an
+// empty variable revoked every live coupon and overwrote each one's real expiry. Only an
+// absent --code means "all".
+it('refuses a blank --code and expires nothing', function (string $command, array $parameters): void {
+    Event::fake([CouponRevoked::class]);
+
+    $expiry = now()->addMonth()->startOfSecond();
+    $a = Coupon::factory()->active()->create(['code' => 'A', 'expires_at' => $expiry]);
+    $b = Coupon::factory()->active()->create(['code' => 'B']);
+
+    $this->artisan($command, $parameters)
+        ->expectsOutputToContain('--code')
+        ->assertFailed();
+
+    expect($a->fresh()->expires_at?->equalTo($expiry))->toBeTrue()
+        ->and($b->fresh()->expires_at)->toBeNull();
+
+    Event::assertNotDispatched(CouponRevoked::class);
+})->with([
+    'empty value' => ['coupons:expire', ['--code' => '']],
+    'whitespace value' => ['coupons:expire', ['--code' => '   ']],
+    'empty value on the command line' => ['coupons:expire --code=', []],
+    'bare flag on the command line' => ['coupons:expire --code', []],
+]);

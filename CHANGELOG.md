@@ -6,6 +6,12 @@ All notable changes to `coupons-for-laravel` are documented in this file. The fo
 
 ## Unreleased
 
+### Fixed
+
+- `coupons:expire` refuses a blank `--code` (`--code=`, whitespace, a bare `--code`) with an
+  error and a failure exit instead of expiring every live coupon. Only an absent `--code`
+  means "all".
+
 ## 1.0.1 - 2026-10-04
 
 ### Changed

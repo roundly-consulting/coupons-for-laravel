@@ -6,6 +6,7 @@ namespace RoundlyConsulting\Coupons\Commands;
 
 use Illuminate\Console\Command;
 use RoundlyConsulting\Coupons\CouponManager;
+use RoundlyConsulting\Coupons\Support\CodeFormat;
 
 final class ExpireCouponsCommand extends Command
 {
@@ -15,13 +16,21 @@ final class ExpireCouponsCommand extends Command
 
     /**
      * `Coupons::expireAll()`: each live coupon is revoked like `Coupons::revoke()` does it,
-     * so CouponRevoked fires per coupon.
+     * so CouponRevoked fires per coupon. Only an absent --code means "every coupon": a blank
+     * one (`--code=`, an empty `--code="$CODE"`) is refused, never read as "all".
      */
     public function handle(CouponManager $coupons): int
     {
         $code = $this->option('code');
+        $code = is_string($code) ? $code : null;
 
-        $count = $coupons->expireAll(is_string($code) && $code !== '' ? $code : null);
+        if ($this->input->hasParameterOption('--code') && CodeFormat::normalize($code ?? '') === '') {
+            $this->error('The --code option needs a coupon code; omit it to expire every coupon.');
+
+            return self::FAILURE;
+        }
+
+        $count = $coupons->expireAll($code);
 
         $this->info("Expired {$count} coupon(s).");
 
