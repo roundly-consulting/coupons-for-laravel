@@ -25,6 +25,11 @@ All notable changes to `coupons-for-laravel` are documented in this file. The fo
 - `Coupons::fake()` builds and queries the `coupons.model` class: coupons from `generate()` /
   `create()`, an unknown code's coupon and `redeemable()` are your subclass, not the packaged
   `Coupon`.
+- `Coupons::fake()` consumes usage like production: every recorded successful redemption
+  counts against the coupon's `max_usage` and, while `coupons.redeemer.track` is on, the
+  redeemer's `max_usage_per_redeemer`. A second redemption of a single-use coupon is now
+  recorded as a failure (`AtMaxUsage` / `AlreadyRedeemed`), and `check()` reports the caps of
+  an undated in-memory coupon instead of stopping at the waived activation check.
 
 ## 1.0.1 - 2026-10-04
 

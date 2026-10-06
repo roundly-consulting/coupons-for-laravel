@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace RoundlyConsulting\Coupons\Testing;
 
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use PHPUnit\Framework\Assert;
@@ -17,6 +18,7 @@ use RoundlyConsulting\Coupons\Support\CodeFormat;
 use RoundlyConsulting\Coupons\Support\CouponModel;
 use RoundlyConsulting\Coupons\Support\RedemptionGuard;
 use RoundlyConsulting\Money\Money;
+use RoundlyConsulting\PackageToolkit\Support\Config;
 
 /**
  * The recording double `Coupons::fake()` installs. It writes nothing — no row, no event —
@@ -28,6 +30,10 @@ use RoundlyConsulting\Money\Money;
  * code is treated as a fresh, unrestricted coupon, so `check()` answers null and `redeem()`
  * records a success — check-then-redeem flows work without seeding. A database row gets the
  * real checks. Seed a coupon (on the fake or as a row) to exercise a refusal.
+ *
+ * Every recorded success consumes a use, as in production: the global cap and — while
+ * `coupons.redeemer.track` is on — the per-redeemer cap count the redemptions recorded here
+ * on top of the coupon's own `usage` and redemption rows.
  */
 final class CouponsFake extends CouponManager
 {
@@ -50,6 +56,20 @@ final class CouponsFake extends CouponManager
     private array $pruned = [];
 
     /**
+     * Successful redemptions recorded per coupon (see usageKey()).
+     *
+     * @var array<string, int>
+     */
+    private array $usage = [];
+
+    /**
+     * Successful tracked redemptions recorded per coupon and redeemer (see redeemerKey()).
+     *
+     * @var array<string, int>
+     */
+    private array $usageByRedeemer = [];
+
+    /**
      * Builds the coupon in memory (nothing is saved), refusing the same invalid definitions
      * the real create does.
      */
@@ -63,6 +83,7 @@ final class CouponsFake extends CouponManager
             'type' => $data->type,
             'value' => $data->value,
             'code' => $code,
+            'usage' => 0,
             'max_usage' => $data->maxUsage,
             'currency' => $data->lockedCurrency(),
             'minimum_spend' => $data->minimumSpend,
@@ -119,8 +140,9 @@ final class CouponsFake extends CouponManager
 
     /**
      * Records a success or — when the coupon would be refused — a failure, and never
-     * throws. A success carries the discount and total the real redemption would compute;
-     * a refusal carries a zero discount and the full price.
+     * throws. A success carries the discount and total the real redemption would compute and
+     * consumes a use, so a second redemption of a single-use coupon is refused; a refusal
+     * carries a zero discount and the full price.
      */
     public function redeem(Coupon|string $coupon, Money $price, ?Model $redeemer = null): RedemptionResult
     {
@@ -145,6 +167,7 @@ final class CouponsFake extends CouponManager
         }
 
         $this->redeemed[] = $result;
+        $this->countRedemption($model, $redeemer);
 
         return $result;
     }
@@ -348,22 +371,71 @@ final class CouponsFake extends CouponManager
     }
 
     /**
-     * The guard reason the fake reports, or null. It waives the "inactive" reason only for an
-     * in-memory coupon — created on the fake, or unknown — that has neither an activation
-     * nor an expiry date, so a plain redeem of one still counts as a success. A database row
-     * gets the real check: one nobody activated is refused, exactly as in production.
+     * The guard reason the fake reports, or null — judged on a copy whose usage includes the
+     * successes recorded here. It waives the "inactive" reason only for an in-memory coupon —
+     * created on the fake, or unknown — that has neither an activation nor an expiry date, by
+     * judging it as activated now: a plain redeem of one still counts as a success, and every
+     * check after that one (the usage caps) still runs. A database row gets the real check:
+     * one nobody activated is refused, exactly as in production.
      */
     private function failureFor(Coupon $coupon, ?Money $price, ?Model $redeemer): ?RedemptionFailureReason
     {
-        $reason = $this->container->make(RedemptionGuard::class)->firstFailure($coupon, $price, $redeemer);
+        $judged = clone $coupon;
+        $judged->usage = $coupon->usage + ($this->usage[$this->usageKey($coupon)] ?? 0);
 
-        if ($reason === RedemptionFailureReason::Expired
-            && ! $coupon->exists
-            && $coupon->activated_at === null
-            && $coupon->expires_at === null) {
-            return null;
+        if (! $coupon->exists && $coupon->activated_at === null && $coupon->expires_at === null) {
+            $judged->activated_at = CarbonImmutable::now();
         }
 
-        return $reason;
+        // The per-redeemer cap is the guard's last check, so it is judged here instead, where
+        // the redemptions recorded on the fake can be counted with the rows.
+        $reason = $this->container->make(RedemptionGuard::class)->firstFailure($judged, $price, null);
+
+        if ($reason !== null || $redeemer === null) {
+            return $reason;
+        }
+
+        return $this->isAtRedeemerCap($coupon, $redeemer) ? RedemptionFailureReason::AlreadyRedeemed : null;
+    }
+
+    /**
+     * Coupon::isAtMaximumUsageFor() with the tracked successes recorded here added to the
+     * redeemer's rows — not enforced while `coupons.redeemer.track` is off.
+     */
+    private function isAtRedeemerCap(Coupon $coupon, Model $redeemer): bool
+    {
+        return $coupon->max_usage_per_redeemer > 0
+            && Config::boolean('coupons.redeemer.track', true)
+            && $coupon->usageBy($redeemer) + ($this->usageByRedeemer[$this->redeemerKey($coupon, $redeemer)] ?? 0)
+                >= $coupon->max_usage_per_redeemer;
+    }
+
+    /**
+     * One use of the coupon and — when tracked, as the real redemption writes a row only
+     * then — one use by the redeemer.
+     */
+    private function countRedemption(Coupon $coupon, ?Model $redeemer): void
+    {
+        $key = $this->usageKey($coupon);
+        $this->usage[$key] = ($this->usage[$key] ?? 0) + 1;
+
+        if ($redeemer !== null && Config::boolean('coupons.redeemer.track', true)) {
+            $key = $this->redeemerKey($coupon, $redeemer);
+            $this->usageByRedeemer[$key] = ($this->usageByRedeemer[$key] ?? 0) + 1;
+        }
+    }
+
+    /**
+     * A row by its key, an in-memory coupon by its (normalised) code — so a row redeemed by
+     * code and by model is one coupon.
+     */
+    private function usageKey(Coupon $coupon): string
+    {
+        return $coupon->exists ? 'row:'.$coupon->getKey() : 'code:'.$coupon->code;
+    }
+
+    private function redeemerKey(Coupon $coupon, Model $redeemer): string
+    {
+        return $this->usageKey($coupon).'|'.$redeemer->getMorphClass().'|'.$redeemer->getKey();
     }
 }

@@ -7,6 +7,8 @@ use RoundlyConsulting\Coupons\CouponManager;
 use RoundlyConsulting\Coupons\DataTransferObjects\CreateCouponData;
 use RoundlyConsulting\Coupons\Enums\DiscountType;
 use RoundlyConsulting\Coupons\Enums\RedemptionFailureReason;
+use RoundlyConsulting\Coupons\Exceptions\CouponAlreadyRedeemed;
+use RoundlyConsulting\Coupons\Exceptions\CouponAtMaxUsage;
 use RoundlyConsulting\Coupons\Exceptions\InvalidCouponDefinition;
 use RoundlyConsulting\Coupons\Facades\Coupons;
 use RoundlyConsulting\Coupons\Models\Coupon;
@@ -398,3 +400,67 @@ it('refuses the same invalid definitions the real create does', function (Discou
     'negative fixed value' => [DiscountType::Fixed, -1, 'EUR'],
     'percentage out of range' => [DiscountType::Percentage, 10_001, null],
 ]);
+
+// Regression: the fake recorded every successful redemption but never counted it, so a
+// single-use coupon — created on the fake or seeded as a row — and a one-per-customer cap all
+// redeemed twice under the fake while production refused the second attempt.
+it('consumes usage on the fake like the real manager', function (Closure $seed, RedemptionFailureReason $reason, string $exception, bool $faked): void {
+    $fake = $faked ? Coupons::fake() : null;
+    [$code, $redeemer] = $seed($faked);
+    $cart = Money::ofMinor(5000, 'EUR');
+
+    expect(Coupons::redeem($code, $cart, $redeemer)->discount->minor())->toBe('500');
+
+    if ($fake === null) {
+        expect(fn () => Coupons::redeem($code, $cart, $redeemer))->toThrow($exception);
+
+        return;
+    }
+
+    expect(Coupons::check($code, $cart, $redeemer))->toBe($reason)
+        ->and(Coupons::redeem($code, $cart, $redeemer)->discount->isZero())->toBeTrue();
+
+    $fake->assertRedemptionFailed($code, $reason);
+
+    $successes = 0;
+    $fake->assertRedeemed($code, function () use (&$successes): bool {
+        $successes++;
+
+        return true;
+    });
+
+    expect($successes)->toBe(1);
+})->with([
+    'a coupon created with maxUsage 1' => [function (bool $faked): array {
+        $coupon = Coupons::generate(DiscountType::Percentage, 1000, 'ONCE', maxUsage: 1);
+
+        // On the fake the undated in-memory coupon is not refused as inactive; a row must be.
+        if (! $faked) {
+            $coupon->activate()->save();
+        }
+
+        return ['ONCE', null];
+    }, RedemptionFailureReason::AtMaxUsage, CouponAtMaxUsage::class],
+    'a seeded row with max_usage 1' => [function (): array {
+        Coupon::factory()->active()->percentage(1000)->create(['code' => 'ROW', 'max_usage' => 1]);
+
+        return ['ROW', null];
+    }, RedemptionFailureReason::AtMaxUsage, CouponAtMaxUsage::class],
+    'a seeded row with max_usage_per_redeemer 1' => [function (): array {
+        Coupon::factory()->active()->percentage(1000)->create(['code' => 'PER', 'max_usage_per_redeemer' => 1]);
+
+        return ['PER', Customer::query()->create(['name' => 'Ada'])];
+    }, RedemptionFailureReason::AlreadyRedeemed, CouponAlreadyRedeemed::class],
+])->with(['real manager' => false, 'fake' => true]);
+
+// Regression: waiving "inactive" for an undated in-memory coupon returned null outright, so
+// the usage checks behind it never ran.
+it('still checks the usage cap of an undated in-memory coupon', function (): void {
+    Coupons::fake();
+
+    $exhausted = Coupon::factory()->percentage(1000)->make(['code' => 'USEDUP', 'usage' => 1, 'max_usage' => 1]);
+    $fresh = Coupon::factory()->percentage(1000)->make(['code' => 'FRESH', 'max_usage' => 1]);
+
+    expect(Coupons::check($exhausted))->toBe(RedemptionFailureReason::AtMaxUsage)
+        ->and(Coupons::check($fresh))->toBeNull();
+});
