@@ -9,6 +9,7 @@ use RoundlyConsulting\Coupons\Events\CouponExhausted;
 use RoundlyConsulting\Coupons\Events\CouponRedeemed;
 use RoundlyConsulting\Coupons\Exceptions\CouponAtMaxUsage;
 use RoundlyConsulting\Coupons\Facades\Coupons;
+use RoundlyConsulting\Coupons\Tests\Fixtures\Customer;
 use RoundlyConsulting\Coupons\Tests\Fixtures\OtherConnectionCoupon;
 use RoundlyConsulting\Money\Money;
 use RoundlyConsulting\Testing\Fixtures\LockRecorder;
@@ -66,4 +67,19 @@ it('locks the coupon row inside a transaction on the coupon model connection', f
         // The after-commit events still fire once that connection's transaction commits.
         ->and($heard)->toBe(['CouponRedeemed', 'CouponExhausted'])
         ->and(fn () => Coupons::redeem('ELSEWHERE', Money::ofMinor(5000, 'EUR')))->toThrow(CouponAtMaxUsage::class);
+});
+
+// Regression: the redemption row was written through the coupon (so on its connection), but
+// the redeemer's relation inherited the redeemer's connection — `hasRedeemed()` and
+// `couponRedemptions()` read a database the row was never written to.
+it('reads a redeemer redemptions from the coupon model connection', function (): void {
+    Coupons::generate(DiscountType::Percentage, 1000, code: 'ELSEWHERE')->activate()->save();
+    $customer = Customer::query()->create(['name' => 'Ada']);
+
+    $customer->redeemCoupon('ELSEWHERE', Money::ofMinor(5000, 'EUR'));
+
+    expect($customer->hasRedeemed('ELSEWHERE'))->toBeTrue()
+        ->and($customer->couponRedemptions()->count())->toBe(1)
+        ->and($customer->couponRedemptions()->sole()->coupon->code)->toBe('ELSEWHERE')
+        ->and(DB::connection('coupons_other')->table('coupon_redemptions')->count())->toBe(1);
 });

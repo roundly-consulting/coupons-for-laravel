@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Facades\DB;
 use RoundlyConsulting\Coupons\Database\Factories\CouponRedemptionFactory;
 use RoundlyConsulting\Coupons\Support\CouponModel;
 use RoundlyConsulting\Money\Casts\AsMoney;
@@ -40,6 +41,21 @@ final class CouponRedemption extends Model
     protected static function newFactory(): CouponRedemptionFactory
     {
         return CouponRedemptionFactory::new();
+    }
+
+    /**
+     * Redemptions live beside their coupons: on the `coupons.model` connection, else the
+     * default one — always a concrete name. Left null, Eloquent would hand each relation its
+     * parent's connection, so a row written through the coupon would be read through the
+     * redeemer (`couponRedemptions()`, `hasRedeemed()`) on whatever connection that model uses.
+     */
+    public function getConnectionName(): string
+    {
+        $coupon = CouponModel::class();
+
+        return parent::getConnectionName()
+            ?? (new $coupon)->getConnectionName()
+            ?? DB::getDefaultConnection();
     }
 
     /** @return array<string, string> */

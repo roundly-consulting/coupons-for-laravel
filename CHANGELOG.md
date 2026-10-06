@@ -11,6 +11,10 @@ All notable changes to `coupons-for-laravel` are documented in this file. The fo
 - `coupons:expire` refuses a blank `--code` (`--code=`, whitespace, a bare `--code`) with an
   error and a failure exit instead of expiring every live coupon. Only an absent `--code`
   means "all".
+- `CouponRedemption` always uses the coupon model's connection (`coupons.model`'s, else the
+  default). `HasCoupons::couponRedemptions()` and `hasRedeemed()` read the rows where
+  redemption wrote them, whether the coupon model or the redeemer model is on a non-default
+  connection.
 
 ## 1.0.1 - 2026-10-04
 
