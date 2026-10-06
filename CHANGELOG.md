@@ -6,6 +6,8 @@ All notable changes to `coupons-for-laravel` are documented in this file. The fo
 
 ## Unreleased
 
+## 1.1.0 - 2026-10-06
+
 ### Changed
 
 - `Coupons::fake()`: `generate()`, `create()` and `createQuietly()` now throw
@@ -13,6 +15,8 @@ All notable changes to `coupons-for-laravel` are documented in this file. The fo
   live database row, like the real manager (a soft-deleted row's code stays free). Before, the
   duplicate was accepted and shadowed the real row in `find()`. Tests that create the same
   explicit code twice under the fake need distinct codes.
+- Documentation: the README hero image uses an absolute URL, so it renders on Packagist and
+  other sites.
 
 ### Fixed
 
