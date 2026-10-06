@@ -60,17 +60,13 @@ ArchPresets::modelsResolveThroughSeam(__DIR__.'/../../src', 'Support');
 /**
  * `modelsResolveThroughSeam` bans `static::query()` / `new static`, but not a call site
  * naming the packaged class outright — which is how both console commands bypassed
- * `coupons.model` while every other path honoured it. This pins that shape too. The
- * recording fake is exempt: it is DB-free and never hydrates host rows.
+ * `coupons.model` while every other path honoured it. This pins that shape too — the
+ * recording fake included, which builds and reads the host's model like the real manager.
  */
 it('never queries the packaged coupon model directly', function (): void {
     $offenders = [];
 
     foreach (couponsPhpFilesIn(__DIR__.'/../../src') as $file) {
-        if (str_contains($file->getPathname(), '/Testing/')) {
-            continue;
-        }
-
         // Comments stripped: docblocks legitimately name `Coupon::isRedeemableBy()`.
         $contents = php_strip_whitespace($file->getPathname());
 

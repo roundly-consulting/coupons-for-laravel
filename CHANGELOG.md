@@ -22,6 +22,9 @@ All notable changes to `coupons-for-laravel` are documented in this file. The fo
 - With `coupons.redeemer.track` off, the per-redeemer cap is no longer enforced from rows
   written while tracking was on: `check()`, `redeem()` and `Coupon::isAtMaximumUsageFor()` now
   agree with `remainingUsageFor()`, which already reported the cap as not enforced.
+- `Coupons::fake()` builds and queries the `coupons.model` class: coupons from `generate()` /
+  `create()`, an unknown code's coupon and `redeemable()` are your subclass, not the packaged
+  `Coupon`.
 
 ## 1.0.1 - 2026-10-04
 

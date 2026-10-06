@@ -14,6 +14,7 @@ use RoundlyConsulting\Coupons\Enums\DiscountType;
 use RoundlyConsulting\Coupons\Enums\RedemptionFailureReason;
 use RoundlyConsulting\Coupons\Models\Coupon;
 use RoundlyConsulting\Coupons\Support\CodeFormat;
+use RoundlyConsulting\Coupons\Support\CouponModel;
 use RoundlyConsulting\Coupons\Support\RedemptionGuard;
 use RoundlyConsulting\Money\Money;
 
@@ -58,7 +59,7 @@ final class CouponsFake extends CouponManager
 
         $data->assertValid($code);
 
-        $coupon = new Coupon([
+        $coupon = $this->newCoupon([
             'type' => $data->type,
             'value' => $data->value,
             'code' => $code,
@@ -103,7 +104,7 @@ final class CouponsFake extends CouponManager
      */
     public function redeemable(): Builder
     {
-        return Coupon::query()->whereRaw('1 = 0');
+        return CouponModel::class()::query()->whereRaw('1 = 0');
     }
 
     public function check(Coupon|string $coupon, ?Money $price = null, ?Model $redeemer = null): ?RedemptionFailureReason
@@ -324,7 +325,7 @@ final class CouponsFake extends CouponManager
             return $coupon;
         }
 
-        return $this->find($coupon) ?? new Coupon([
+        return $this->find($coupon) ?? $this->newCoupon([
             'code' => $coupon,
             'type' => DiscountType::Percentage,
             'value' => 0,
@@ -332,6 +333,18 @@ final class CouponsFake extends CouponManager
             'max_usage' => 0,
             'max_usage_per_redeemer' => 0,
         ]);
+    }
+
+    /**
+     * An unsaved instance of the `coupons.model` class, like the real create builds.
+     *
+     * @param  array<string, mixed>  $attributes
+     */
+    private function newCoupon(array $attributes): Coupon
+    {
+        $model = CouponModel::class();
+
+        return new $model($attributes);
     }
 
     /**

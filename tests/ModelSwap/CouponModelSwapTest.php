@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Event;
 use RoundlyConsulting\Coupons\Actions\RedeemCouponAction;
 use RoundlyConsulting\Coupons\DataTransferObjects\CreateCouponData;
 use RoundlyConsulting\Coupons\DataTransferObjects\RedeemCouponData;
+use RoundlyConsulting\Coupons\Enums\DiscountType;
 use RoundlyConsulting\Coupons\Events\CouponRevoked;
 use RoundlyConsulting\Coupons\Exceptions\CouponAlreadyRedeemed;
 use RoundlyConsulting\Coupons\Exceptions\CouponAtMaxUsage;
@@ -170,4 +171,16 @@ it('records and caps per-redeemer redemptions through the swapped model', functi
         ->and($coupon->remainingUsageFor($customer))->toBe(0)
         ->and(fn (): mixed => $customer->redeemCoupon('PERSWAP', Money::ofMinor(5000, 'USD')))
         ->toThrow(CouponAlreadyRedeemed::class);
+});
+
+/**
+ * The fake is a call site too: it built and queried the packaged Coupon, so under
+ * `Coupons::fake()` a host type hint on its subclass failed and its overrides never ran.
+ */
+it('builds the swapped coupon model on the fake', function (): void {
+    Coupons::fake();
+
+    expect(Coupons::generate(DiscountType::Percentage, 1000, 'FAKESWAP')::class)->toBe(CustomCoupon::class)
+        ->and(Coupons::redeem('UNSEEDED', Money::ofMinor(5000, 'USD'))->coupon::class)->toBe(CustomCoupon::class)
+        ->and(Coupons::redeemable()->getModel()::class)->toBe(CustomCoupon::class);
 });
