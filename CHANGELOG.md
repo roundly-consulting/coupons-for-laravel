@@ -6,6 +6,14 @@ All notable changes to `coupons-for-laravel` are documented in this file. The fo
 
 ## Unreleased
 
+### Changed
+
+- `Coupons::fake()`: `generate()`, `create()` and `createQuietly()` now throw
+  `CouponCodeTaken` for an explicit code already held by a coupon created on the fake or by a
+  live database row, like the real manager (a soft-deleted row's code stays free). Before, the
+  duplicate was accepted and shadowed the real row in `find()`. Tests that create the same
+  explicit code twice under the fake need distinct codes.
+
 ### Fixed
 
 - `coupons:expire` refuses a blank `--code` (`--code=`, whitespace, a bare `--code`) with an

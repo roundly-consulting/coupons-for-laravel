@@ -13,6 +13,7 @@ use RoundlyConsulting\Coupons\DataTransferObjects\CreateCouponData;
 use RoundlyConsulting\Coupons\DataTransferObjects\RedemptionResult;
 use RoundlyConsulting\Coupons\Enums\DiscountType;
 use RoundlyConsulting\Coupons\Enums\RedemptionFailureReason;
+use RoundlyConsulting\Coupons\Exceptions\CouponCodeTaken;
 use RoundlyConsulting\Coupons\Models\Coupon;
 use RoundlyConsulting\Coupons\Support\CodeFormat;
 use RoundlyConsulting\Coupons\Support\CouponModel;
@@ -71,13 +72,18 @@ final class CouponsFake extends CouponManager
 
     /**
      * Builds the coupon in memory (nothing is saved), refusing the same invalid definitions
-     * the real create does.
+     * the real create does — and an explicit code already held by a coupon created on the
+     * fake or by a live row (CouponCodeTaken).
      */
     public function create(CreateCouponData $data): Coupon
     {
         $code = $data->code === null ? 'FAKE-'.(count($this->created) + 1) : CodeFormat::normalize($data->code);
 
         $data->assertValid($code);
+
+        if ($data->code !== null && ($this->createdHere($code) !== null || parent::exists($code))) {
+            throw CouponCodeTaken::forCode($code);
+        }
 
         $coupon = $this->newCoupon([
             'type' => $data->type,
@@ -102,15 +108,7 @@ final class CouponsFake extends CouponManager
 
     public function find(string $code): ?Coupon
     {
-        $code = CodeFormat::normalize($code);
-
-        foreach (array_reverse($this->created) as $coupon) {
-            if ($coupon->code === $code) {
-                return $coupon;
-            }
-        }
-
-        return parent::find($code);
+        return $this->createdHere($code) ?? parent::find($code);
     }
 
     public function exists(string $code): bool
@@ -356,6 +354,22 @@ final class CouponsFake extends CouponManager
             'max_usage' => 0,
             'max_usage_per_redeemer' => 0,
         ]);
+    }
+
+    /**
+     * The coupon created on the fake that holds the code, if any.
+     */
+    private function createdHere(string $code): ?Coupon
+    {
+        $code = CodeFormat::normalize($code);
+
+        foreach (array_reverse($this->created) as $coupon) {
+            if ($coupon->code === $code) {
+                return $coupon;
+            }
+        }
+
+        return null;
     }
 
     /**

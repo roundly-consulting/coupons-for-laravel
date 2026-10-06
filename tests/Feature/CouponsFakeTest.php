@@ -9,6 +9,7 @@ use RoundlyConsulting\Coupons\Enums\DiscountType;
 use RoundlyConsulting\Coupons\Enums\RedemptionFailureReason;
 use RoundlyConsulting\Coupons\Exceptions\CouponAlreadyRedeemed;
 use RoundlyConsulting\Coupons\Exceptions\CouponAtMaxUsage;
+use RoundlyConsulting\Coupons\Exceptions\CouponCodeTaken;
 use RoundlyConsulting\Coupons\Exceptions\InvalidCouponDefinition;
 use RoundlyConsulting\Coupons\Facades\Coupons;
 use RoundlyConsulting\Coupons\Models\Coupon;
@@ -463,4 +464,34 @@ it('still checks the usage cap of an undated in-memory coupon', function (): voi
 
     expect(Coupons::check($exhausted))->toBe(RedemptionFailureReason::AtMaxUsage)
         ->and(Coupons::check($fresh))->toBeNull();
+});
+
+// The fake never checked that an explicit code was taken: generating `SUMMER` twice succeeded,
+// and a fake coupon over a live row shadowed that row in find(). It now refuses the code like
+// the real create — held by a coupon created on the fake or by a live row; a soft-deleted
+// row's code stays free.
+it('refuses a code already taken on the fake or by a live row', function (): void {
+    Coupon::factory()->create(['code' => 'TAKEN']);
+    Coupon::factory()->create(['code' => 'FREED'])->delete();
+    $fake = Coupons::fake();
+
+    Coupons::generate(DiscountType::Percentage, 1000, 'SUMMER');
+
+    expect(fn () => Coupons::generate(DiscountType::Percentage, 1000, ' summer '))
+        ->toThrow(CouponCodeTaken::class, 'Coupon code [SUMMER] is already taken.')
+        ->and(fn () => Coupons::generate(DiscountType::Percentage, 1000, 'taken'))
+        ->toThrow(CouponCodeTaken::class, 'Coupon code [TAKEN] is already taken.')
+        ->and(fn () => Coupons::createQuietly(CreateCouponData::percentage(10, 'TAKEN')))
+        ->toThrow(CouponCodeTaken::class)
+        ->and(Coupons::generate(DiscountType::Percentage, 1000, 'FREED')->code)->toBe('FREED')
+        ->and(Coupons::find('TAKEN')?->exists)->toBeTrue();
+
+    $created = [];
+    $fake->assertCreated(function (Coupon $coupon) use (&$created): bool {
+        $created[] = $coupon->code;
+
+        return true;
+    });
+
+    expect($created)->toBe(['SUMMER', 'FREED']);
 });
