@@ -261,14 +261,22 @@ class Coupon extends Model
         return $this->usage > 0;
     }
 
+    /**
+     * Expired at or before now — the `expired()` scope's `<=`, so a coupon revoked this very
+     * instant is already expired.
+     */
     public function isExpired(): bool
     {
-        return $this->expires_at?->isPast() ?? false;
+        return $this->expires_at?->lessThanOrEqualTo(CarbonImmutable::now()) ?? false;
     }
 
+    /**
+     * Activated at or before now — the `active()` scope's `<=`, so the stored instant itself
+     * counts.
+     */
     public function isActive(): bool
     {
-        return $this->activated_at?->isPast() ?? false;
+        return $this->activated_at?->lessThanOrEqualTo(CarbonImmutable::now()) ?? false;
     }
 
     /**

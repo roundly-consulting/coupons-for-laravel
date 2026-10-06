@@ -15,6 +15,10 @@ All notable changes to `coupons-for-laravel` are documented in this file. The fo
   default). `HasCoupons::couponRedemptions()` and `hasRedeemed()` read the rows where
   redemption wrote them, whether the coupon model or the redeemer model is on a non-default
   connection.
+- `Coupon::isActive()` and `isExpired()` count the stored instant itself (`<= now`), like the
+  `active()`, `expired()` and `redeemable()` scopes. At that exact instant a coupon
+  `redeemable()` lists is no longer refused as expired, and a coupon revoked that instant is
+  already refused.
 
 ## 1.0.1 - 2026-10-04
 
