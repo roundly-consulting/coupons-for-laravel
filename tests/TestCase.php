@@ -11,6 +11,8 @@ use RoundlyConsulting\Testing\PackageTestCase;
 
 abstract class TestCase extends PackageTestCase
 {
+    private static ?string $appKey = null;
+
     /**
      * Every provider coupons hard-requires, in registration order. A host auto-discovers
      * these; the suite must list them or the test environment is a fiction.
@@ -37,12 +39,22 @@ abstract class TestCase extends PackageTestCase
     }
 
     /**
+     * Migrate once per worker and schema signature, then reset only the data between tests.
+     */
+    protected function keepsMigratedSchema(): bool
+    {
+        return true;
+    }
+
+    /**
      * @return array<string, mixed>
      */
     protected function configBeforeBoot(): array
     {
         return [
-            'app.key' => 'base64:'.base64_encode(random_bytes(32)),
+            // One random key per process: the config is part of the kept schema's signature,
+            // so a key minted per test would migrate every test from scratch.
+            'app.key' => self::$appKey ??= 'base64:'.base64_encode(random_bytes(32)),
         ];
     }
 }
