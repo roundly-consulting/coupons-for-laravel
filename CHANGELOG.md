@@ -6,6 +6,8 @@ All notable changes to `coupons-for-laravel` are documented in this file. The fo
 
 ## Unreleased
 
+## 1.1.2 - 2026-10-17
+
 ### Fixed
 
 - Factories build the configured model when a host swaps it.
