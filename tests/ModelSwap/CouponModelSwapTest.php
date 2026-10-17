@@ -12,6 +12,8 @@ use RoundlyConsulting\Coupons\Events\CouponRevoked;
 use RoundlyConsulting\Coupons\Exceptions\CouponAlreadyRedeemed;
 use RoundlyConsulting\Coupons\Exceptions\CouponAtMaxUsage;
 use RoundlyConsulting\Coupons\Facades\Coupons;
+use RoundlyConsulting\Coupons\Models\Coupon;
+use RoundlyConsulting\Coupons\Models\CouponRedemption;
 use RoundlyConsulting\Coupons\Tests\Fixtures\CustomCoupon;
 use RoundlyConsulting\Coupons\Tests\Fixtures\Customer;
 use RoundlyConsulting\Coupons\Tests\Fixtures\SwappedCouponTestCase;
@@ -183,4 +185,19 @@ it('builds the swapped coupon model on the fake', function (): void {
     expect(Coupons::generate(DiscountType::Percentage, 1000, 'FAKESWAP')::class)->toBe(CustomCoupon::class)
         ->and(Coupons::redeem('UNSEEDED', Money::ofMinor(5000, 'USD'))->coupon::class)->toBe(CustomCoupon::class)
         ->and(Coupons::redeemable()->getModel()::class)->toBe(CustomCoupon::class);
+});
+
+/**
+ * The factory named the packaged Coupon, so `Coupon::factory()` (and a redemption factory's
+ * parent coupon) built the packaged class: the host's model events and overrides never ran.
+ */
+it('builds the swapped coupon model from the factory', function (): void {
+    CustomCoupon::resetCreationCount();
+
+    $redemption = CouponRedemption::factory()->create();
+
+    expect(Coupon::factory()->create()::class)->toBe(CustomCoupon::class)
+        ->and(CustomCoupon::factory()->create()::class)->toBe(CustomCoupon::class)
+        ->and($redemption->coupon::class)->toBe(CustomCoupon::class)
+        ->and(CustomCoupon::creationCount())->toBe(3);
 });

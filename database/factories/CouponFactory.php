@@ -8,12 +8,24 @@ use Illuminate\Database\Eloquent\Factories\Factory;
 use RoundlyConsulting\Coupons\Enums\DiscountType;
 use RoundlyConsulting\Coupons\Models\Coupon;
 use RoundlyConsulting\Coupons\Support\CouponConfig;
+use RoundlyConsulting\Coupons\Support\CouponModel;
 use RoundlyConsulting\Money\Money;
 
 /** @extends Factory<Coupon> */
 final class CouponFactory extends Factory
 {
     protected $model = Coupon::class;
+
+    /**
+     * Build the model the host configured in `coupons.model`, not the packaged one, so a host
+     * subclass comes out of the factory with its own events and observers.
+     *
+     * @return class-string<Coupon>
+     */
+    public function modelName(): string
+    {
+        return CouponModel::class();
+    }
 
     /** @return array<string, mixed> */
     public function definition(): array
