@@ -57,6 +57,9 @@ ArchPresets::noLocalCryptoPrimitives('RoundlyConsulting\Coupons');
  */
 ArchPresets::modelsResolveThroughSeam(__DIR__.'/../../src', 'Support');
 
+// A host swap reaches `Coupon::factory()` too: the factory builds the configured model.
+ArchPresets::factoriesResolveThroughSeam(__DIR__.'/../../database/factories', __DIR__.'/../../src', 'Support');
+
 /**
  * `modelsResolveThroughSeam` bans `static::query()` / `new static`, but not a call site
  * naming the packaged class outright — which is how both console commands bypassed
