@@ -26,7 +26,7 @@ or per-customer usage limits. Redemption is atomic, and every amount is an exact
 
 ## Installation
 
-Requires PHP 8.4 (`ext-bcmath`), Laravel 12 or 13, and MySQL/MariaDB, PostgreSQL or SQLite.
+Requires PHP 8.4 (`ext-bcmath`), Laravel 12 or 13, and MySQL or PostgreSQL.
 
 ```bash
 composer require roundly-consulting/coupons-for-laravel
